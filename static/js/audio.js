@@ -94,8 +94,9 @@ export class MicListener {
         this.setState('capturing');
         this.captureTimer = setTimeout(() => this.emit(), POST_ONSET_MS);
       } else {
-        // track background noise slowly (only while nobody is speaking)
-        this.noiseFloor = this.noiseFloor * 0.995 + Math.min(rms, 0.05) * 0.005;
+        // floor drops fast but rises slowly, so quiet speech under the threshold can't push it up
+        const rate = rms < this.noiseFloor ? 0.05 : 0.002;
+        this.noiseFloor += (Math.min(rms, 0.05) - this.noiseFloor) * rate;
       }
     }
   }

@@ -48,6 +48,7 @@ STATIC_DIR = ROOT / "static"
 DEFAULT_CHECKPOINTS = [ROOT / "checkpoints" / "snn_checkpoint.pt"]
 PERSONAL_CHECKPOINT = ROOT / "checkpoints" / "snn_personal.pt"
 RECORDINGS_DIR = ROOT / "recordings"
+CORRECTIONS_DIR = RECORDINGS_DIR / "corrections"
 COMMAND_WORDS = ["go", "stop", "left", "right", "up", "down", "on", "off"]
 SHIFT_SAMPLES = int(0.08 * SAMPLE_RATE)
 
@@ -110,6 +111,18 @@ def read_pcm(raw: bytes) -> torch.Tensor:
     return torch.frombuffer(bytearray(raw), dtype=torch.float32)
 
 
+def save_clip(folder: Path, word: str, waveform: torch.Tensor) -> torch.Tensor:
+    folder.mkdir(parents=True, exist_ok=True)
+    clip = window_at(waveform, loudest_start(waveform))
+    n = len(list(folder.glob(f"{word}_*.wav")))
+    sf.write(folder / f"{word}_{n:02d}.wav", clip.numpy(), SAMPLE_RATE)
+    return clip
+
+
+def n_corrections() -> int:
+    return len(list(CORRECTIONS_DIR.glob("*.wav")))
+
+
 @app.get("/api/status")
 def status():
     return {
@@ -118,6 +131,7 @@ def status():
         "keywords": KEYWORDS,
         "hidden_sizes": [layer.synapse.out_features for layer in state["model"].hidden_layers],
         "personalized": state["personalized"],
+        "corrections": n_corrections(),
     }
 
 
@@ -207,28 +221,34 @@ async def calibrate_clip(request: Request):
     word = request.query_params.get("word")
     if word not in COMMAND_WORDS or state["session"] is None:
         return JSONResponse({"error": "call /api/calibrate/start first, with a valid ?word="}, status_code=400)
-    waveform = read_pcm(await request.body())
-    clip = window_at(waveform, loudest_start(waveform))
-    n = len(list(state["session"].glob(f"{word}_*.wav")))
-    sf.write(state["session"] / f"{word}_{n:02d}.wav", clip.numpy(), SAMPLE_RATE)
+    clip = save_clip(state["session"], word, read_pcm(await request.body()))
+    saved = len(list(state["session"].glob(f"{word}_*.wav")))
 
     encoder = state["encoder"]
     x = torch.bernoulli(encoder.waveform_to_mfcc(clip).unsqueeze(0).expand(state["n_samples"], -1, -1).contiguous())
     with torch.no_grad():
         logits = state["base_model"](x).mean(0).masked_fill(~mask_for(COMMAND_WORDS), float("-inf"))
     heard = KEYWORDS[int(logits.argmax())]
-    return {"saved": n + 1, "base_heard": heard, "base_correct": heard == word}
+    return {"saved": saved, "base_heard": heard, "base_correct": heard == word}
+
+
+@app.post("/api/correct")
+async def correct(request: Request):
+    """Save the last utterance under the word the user says it really was."""
+    word = request.query_params.get("word")
+    if word not in COMMAND_WORDS:
+        return JSONResponse({"error": "invalid ?word="}, status_code=400)
+    save_clip(CORRECTIONS_DIR, word, read_pcm(await request.body()))
+    return {"corrections": n_corrections()}
 
 
 @app.post("/api/calibrate/train")
 def calibrate_train():
-    if state["session"] is None:
-        return JSONResponse({"error": "no calibration session"}, status_code=400)
     if not train_lock.acquire(blocking=False):
         return JSONResponse({"error": "already training"}, status_code=409)
     try:
         clips = []
-        for f in sorted(state["session"].glob("*.wav")):
+        for f in sorted(RECORDINGS_DIR.glob("*/*.wav")):  # every session + corrections
             audio, _ = sf.read(f, dtype="float32")
             clips.append((torch.from_numpy(audio), f.stem.rsplit("_", 1)[0]))
         if len({w for _, w in clips}) < len(COMMAND_WORDS):

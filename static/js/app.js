@@ -270,9 +270,20 @@ function showResult(r) {
 
 const compact = (n) => n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : `${n}`;
 
+let lastUtterance = null; // kept so Shift+key can relabel it
+
+async function correct(word) {
+  if (!lastUtterance) return toast('Nothing to correct yet', 'warn');
+  const res = await fetch(`/api/correct?word=${word}`, { method: 'POST', body: lastUtterance.buffer }).then((r) => r.json());
+  lastUtterance = null;
+  toast(`Saved as “${word}” — ${res.corrections} correction(s) ready to retrain`);
+  refreshStatus();
+}
+
 const mic = new MicListener({
   onUtterance: async (samples) => {
     if (calib) return calibClip(samples);
+    lastUtterance = samples;
     try { showResult(await classify(samples)); }
     catch (e) { toast(`Inference error: ${e.message}`, 'danger'); }
   },
@@ -309,9 +320,12 @@ const KEYMAP = {
 window.addEventListener('keydown', (e) => {
   if (e.target.tagName === 'INPUT' || e.repeat) return;
   const k = e.key.toLowerCase();
-  if (KEYMAP[k]) { e.preventDefault(); execute(KEYMAP[k], 'key'); }
-  else if (k === 'l') execute(world.state.lights ? 'off' : 'on', 'key');
-  else if (k === 'c') toast(`Camera: ${world.toggleCamera()}`);
+  const word = KEYMAP[k] ?? (k === 'l' ? (world.state.lights ? 'off' : 'on') : null);
+  if (word) {
+    e.preventDefault();
+    if (e.shiftKey) correct(word);
+    execute(word, 'key');
+  } else if (k === 'c') toast(`Camera: ${world.toggleCamera()}`);
   else if (k === 'r') { world.reset(); toast('Position reset'); }
   else if (k === 'm') toggleMic();
 });
@@ -359,7 +373,12 @@ async function calibClip(samples) {
   if (calib.i < CALIB_WORDS.length * TAKES) return renderCalib();
 
   calib = null;
+  await train();
+}
+
+async function train() {
   calibView('calibTraining');
+  $('calib').classList.remove('hide');
   const report = await fetch('/api/calibrate/train', { method: 'POST' }).then((r) => r.json());
   if (report.error) { toast(report.error, 'danger'); $('calib').classList.add('hide'); return; }
   const pct = (x) => `${Math.round(x * 100)}%`;
@@ -373,6 +392,7 @@ async function calibClip(samples) {
 }
 
 $('calibBtn').onclick = startCalibration;
+$('calibRetrain').onclick = train;
 $('calibCancel').onclick = () => { calib = null; $('calib').classList.add('hide'); };
 $('calibDone').onclick = () => $('calib').classList.add('hide');
 $('calibReset').onclick = async () => {
@@ -387,6 +407,8 @@ function refreshStatus() {
     if (!st.model_loaded) { p.textContent = 'untrained model — load checkpoint'; p.className = 'pill warn'; }
     else { p.textContent = `SNN ${st.hidden_sizes.join('×')} · ${st.personalized ? 'calibrated to you' : 'trained'}`; p.className = 'pill ok'; }
     $('calibReset').hidden = !st.personalized;
+    $('calibRetrain').hidden = !st.corrections;
+    $('calibRetrain').textContent = `Retrain with ${st.corrections} correction(s)`;
     $('calibBtn').textContent = st.personalized ? 'Recalibrate my voice' : 'Calibrate to my voice';
   }).catch(() => { $('modelPill').textContent = 'backend offline'; $('modelPill').className = 'pill warn'; });
 }
