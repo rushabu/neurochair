@@ -1,5 +1,7 @@
-torch>=2.0
-torchaudio>=2.0   # must match your torch version (e.g. torch 2.8 -> torchaudio 2.8)
-soundfile>=0.12
-fastapi>=0.110
-uvicorn>=0.29
+# Python 3.12 — tested on Windows 11 (CPU). torch and torchaudio versions must match.
+torch==2.9.0
+torchaudio==2.9.0
+soundfile==0.14.0
+numpy==2.1.2
+fastapi==0.141.1
+uvicorn==0.54.0
