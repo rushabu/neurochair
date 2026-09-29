@@ -1,183 +1,138 @@
-// NeuroChair 3D scene: a procedurally-built wheelchair in a night-time smart courtyard.
+// NeuroChair 3D scene: a procedurally-built wheelchair in a sunlit plaster courtyard.
 // Everything is made from Three.js primitives -- no model files to download.
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
-import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
-import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
-import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 
 const WORLD_RADIUS = 28;
 const CHAIR_RADIUS = 0.45;
 const SPEEDS = [0.9, 1.6, 2.4];          // m/s for speed levels 1..3
 const TURN_RATE = 2.2;                   // rad/s
 
-const COLORS = {
-  cyan: 0x3ef2ff, magenta: 0xff3ea5, amber: 0xffb547, red: 0xff2d4a, green: 0x4dff9a, violet: 0x8a6bff,
+export const PALETTE = {
+  ground: 0xe7ded8, paving: 0xd3c7c0, plaster: 0xf3ece9, ink: 0x1f1d36,
+  rosa: 0xd6456f, ochre: 0xde9a2e, cobalt: 0x2f58c9, lavender: 0xa99bd6, leaf: 0x6d8b4e,
 };
 
 export function createScene(canvas, { onBlocked } = {}) {
   const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.toneMapping = THREE.NeutralToneMapping;
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x05070f);
-  scene.fog = new THREE.FogExp2(0x070a18, 0.035);
+  scene.fog = new THREE.Fog(0xf0ddd6, 35, 95);
 
-  const camera = new THREE.PerspectiveCamera(55, 1, 0.1, 200);
-  camera.position.set(0, 3, -6);
-
+  const camera = new THREE.PerspectiveCamera(58, 1, 0.1, 200);
+  camera.position.set(0, 3, -7);
   const controls = new OrbitControls(camera, canvas);
   controls.enableDamping = true;
-  controls.maxPolarAngle = Math.PI * 0.48;
+  controls.maxPolarAngle = Math.PI * 0.47;
   controls.minDistance = 2;
-  controls.maxDistance = 25;
+  controls.maxDistance = 30;
   controls.enabled = false;
 
-  // ---------- lighting ----------
-  scene.add(new THREE.HemisphereLight(0x3a4a8a, 0x0a0a12, 0.35));
-  const moon = new THREE.DirectionalLight(0x8fa8ff, 0.55);
-  moon.position.set(-12, 20, -8);
-  moon.castShadow = true;
-  moon.shadow.mapSize.set(2048, 2048);
-  Object.assign(moon.shadow.camera, { left: -30, right: 30, top: 30, bottom: -30, far: 60 });
-  scene.add(moon);
-  // soft fill from the camera side so the chair never turns into a silhouette
-  const fill = new THREE.PointLight(0x9fb4ff, 5, 9, 1.5);
-  camera.add(fill); fill.position.set(0.6, 0.8, 0.5);
-  scene.add(camera);
+  // ---------- light: sky fill + one low sun whose shadow box follows the chair ----------
+  scene.add(new THREE.HemisphereLight(0xe4ecff, 0xd9b3a4, 1.6));
+  const sun = new THREE.DirectionalLight(0xfff0de, 2.4);
+  const SUN_OFFSET = new THREE.Vector3(-10, 14, -7);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  sun.shadow.bias = -0.0005;
+  Object.assign(sun.shadow.camera, { left: -12, right: 12, top: 12, bottom: -12, near: 1, far: 50 });
+  scene.add(sun, sun.target);
 
-  // ---------- sky dome + stars ----------
-  const sky = new THREE.Mesh(
-    new THREE.SphereGeometry(90, 32, 16),
+  // ---------- sky ----------
+  scene.add(new THREE.Mesh(
+    new THREE.SphereGeometry(120, 24, 12),
     new THREE.ShaderMaterial({
       side: THREE.BackSide, depthWrite: false, fog: false,
-      uniforms: {},
-      vertexShader: `varying vec3 vP; void main(){ vP = normalize(position); gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
-      fragmentShader: `varying vec3 vP; void main(){
-        float h = clamp(vP.y*1.4, 0.0, 1.0);
-        vec3 horizon = vec3(0.07,0.025,0.11); vec3 zenith = vec3(0.005,0.008,0.03);
-        gl_FragColor = vec4(mix(horizon, zenith, pow(h,0.6)), 1.0); }`,
+      vertexShader: `varying float vY; void main(){ vY = normalize(position).y; gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0); }`,
+      fragmentShader: `varying float vY; void main(){
+        vec3 horizon = vec3(0.94,0.86,0.83); vec3 zenith = vec3(0.55,0.68,0.88);
+        gl_FragColor = vec4(mix(horizon, zenith, smoothstep(0.0, 0.6, vY)), 1.0); }`,
     }),
-  );
-  scene.add(sky);
-  {
-    const n = 1400, pos = new Float32Array(n * 3);
-    for (let i = 0; i < n; i++) {
-      const th = Math.random() * Math.PI * 2, ph = Math.acos(Math.random() * 0.9 + 0.1);
-      pos.set([85 * Math.sin(ph) * Math.cos(th), 85 * Math.cos(ph), 85 * Math.sin(ph) * Math.sin(th)], i * 3);
-    }
-    const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    scene.add(new THREE.Points(g, new THREE.PointsMaterial({ color: 0xffffff, size: 0.35, fog: false, transparent: true, opacity: 0.8 })));
-  }
+  ));
 
-  // ---------- ground ----------
-  const ground = new THREE.Mesh(
-    new THREE.CircleGeometry(60, 64),
-    new THREE.MeshStandardMaterial({ color: 0x0b0f1e, roughness: 0.42, metalness: 0.35 }),
-  );
+  // ---------- ground, paving joints, walkways, perimeter wall ----------
+  const lambert = (color, extra = {}) => new THREE.MeshLambertMaterial({ color, ...extra });
+  const ground = new THREE.Mesh(new THREE.CircleGeometry(100, 48), lambert(PALETTE.ground));
   ground.rotation.x = -Math.PI / 2;
   ground.receiveShadow = true;
   scene.add(ground);
 
-  const grid = new THREE.GridHelper(WORLD_RADIUS * 2, WORLD_RADIUS * 2, COLORS.cyan, 0x1a2a55);
-  grid.material.transparent = true; grid.material.opacity = 0.18; grid.position.y = 0.002;
-  scene.add(grid);
+  const joints = new THREE.GridHelper(WORLD_RADIUS * 2, WORLD_RADIUS, PALETTE.paving, PALETTE.paving);
+  joints.position.y = 0.003;
+  scene.add(joints);
 
-  // glowing walkway cross
-  const pathMat = new THREE.MeshStandardMaterial({ color: 0x141a33, roughness: 0.6, metalness: 0.2 });
-  const edgeMat = new THREE.MeshBasicMaterial({ color: 0x1c7f8f });
+  const walkMat = lambert(PALETTE.plaster);
   for (const rot of [0, Math.PI / 2]) {
-    const p = new THREE.Mesh(new THREE.PlaneGeometry(3, WORLD_RADIUS * 2), pathMat);
-    p.rotation.set(-Math.PI / 2, 0, rot); p.position.y = 0.004; p.receiveShadow = true; scene.add(p);
-    for (const side of [-1.5, 1.5]) {
-      const e = new THREE.Mesh(new THREE.PlaneGeometry(0.05, WORLD_RADIUS * 2), edgeMat);
-      e.rotation.set(-Math.PI / 2, 0, rot);
-      if (rot === 0) e.position.set(side, 0.006, 0); else e.position.set(0, 0.006, side);
-      scene.add(e);
-    }
+    const p = new THREE.Mesh(new THREE.PlaneGeometry(3, WORLD_RADIUS * 2), walkMat);
+    p.rotation.set(-Math.PI / 2, 0, rot); p.position.y = 0.005; p.receiveShadow = true;
+    scene.add(p);
   }
 
-  // boundary ring
-  const boundary = new THREE.Mesh(
-    new THREE.TorusGeometry(WORLD_RADIUS + 0.6, 0.05, 8, 160),
-    new THREE.MeshBasicMaterial({ color: COLORS.magenta }),
+  const perimeter = new THREE.Mesh(
+    new THREE.CylinderGeometry(WORLD_RADIUS + 0.6, WORLD_RADIUS + 0.6, 0.8, 96, 1, true),
+    lambert(PALETTE.rosa, { side: THREE.DoubleSide }),
   );
-  boundary.rotation.x = Math.PI / 2; boundary.position.y = 0.4; scene.add(boundary);
+  perimeter.position.y = 0.4; perimeter.receiveShadow = true;
+  scene.add(perimeter);
+
+  // tall coloured walls outside the perimeter -- scenery only, no collision
+  for (const [w, h, x, z, rot, color] of [
+    [18, 7, 0, 36, 0, PALETTE.rosa], [12, 10, -34, 12, 1.2, PALETTE.ochre],
+    [14, 6, 30, -22, -0.9, PALETTE.lavender], [4, 13, -20, -33, 0.4, PALETTE.cobalt], [9, 4.5, 26, 24, 0.7, PALETTE.ochre],
+  ]) {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, 0.8), lambert(color));
+    wall.position.set(x, h / 2, z); wall.rotation.y = rot; wall.receiveShadow = true;
+    scene.add(wall);
+  }
 
   // ---------- obstacles ----------
-  const obstacles = []; // {x, z, r, kind}
-  const pillarMat = new THREE.MeshStandardMaterial({ color: 0x1b2140, roughness: 0.3, metalness: 0.7 });
-  const addPillar = (x, z, color) => {
-    const g = new THREE.Group();
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.45, 0.5, 5, 24), pillarMat);
-    body.position.y = 2.5; body.castShadow = true; body.receiveShadow = true; g.add(body);
-    for (const y of [0.6, 2.4, 4.2]) {
-      const ring = new THREE.Mesh(new THREE.TorusGeometry(0.5, 0.03, 8, 40), new THREE.MeshBasicMaterial({ color }));
-      ring.rotation.x = Math.PI / 2; ring.position.y = y; g.add(ring);
-    }
-    g.position.set(x, 0, z); scene.add(g);
-    obstacles.push({ x, z, r: 0.5, kind: 'pillar' });
-  };
-  const addPlanter = (x, z) => {
-    const g = new THREE.Group();
-    const box = new THREE.Mesh(new THREE.BoxGeometry(1.4, 0.6, 1.4), new THREE.MeshStandardMaterial({ color: 0x232a45, roughness: 0.7 }));
-    box.position.y = 0.3; box.castShadow = true; box.receiveShadow = true; g.add(box);
-    const rim = new THREE.Mesh(new THREE.BoxGeometry(1.45, 0.03, 1.45), new THREE.MeshBasicMaterial({ color: COLORS.green }));
-    rim.position.y = 0.61; g.add(rim);
-    const bushMat = new THREE.MeshStandardMaterial({ color: 0x1f6b4a, roughness: 0.9, flatShading: true });
-    for (let i = 0; i < 3; i++) {
-      const b = new THREE.Mesh(new THREE.IcosahedronGeometry(0.45 + Math.random() * 0.2, 0), bushMat);
-      b.position.set((Math.random() - 0.5) * 0.6, 0.95 + Math.random() * 0.2, (Math.random() - 0.5) * 0.6);
-      b.castShadow = true; g.add(b);
-    }
-    g.position.set(x, 0, z); scene.add(g);
-    obstacles.push({ x, z, r: 0.95, kind: 'planter' });
-  };
-  const addLamp = (x, z) => {
-    const g = new THREE.Group();
-    const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 3.4, 12), pillarMat);
-    pole.position.y = 1.7; pole.castShadow = true; g.add(pole);
-    const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.18, 16, 12), new THREE.MeshBasicMaterial({ color: 0xffd9a0 }));
-    bulb.position.y = 3.45; g.add(bulb);
-    const light = new THREE.PointLight(0xffb870, 6, 9, 1.6); light.position.y = 3.3; g.add(light);
-    g.position.set(x, 0, z); scene.add(g);
-    obstacles.push({ x, z, r: 0.15, kind: 'lamp' });
-  };
+  const obstacles = []; // {x, z, r, kind, color}
+  const colGeo = new THREE.BoxGeometry(1, 4, 1);
+  const colColors = [PALETTE.rosa, PALETTE.ochre, PALETTE.lavender, PALETTE.cobalt];
+  [[-6, -6], [6, -6], [-6, 6], [6, 6], [-14, 0], [14, 0], [0, -14], [0, 14]].forEach(([x, z], i) => {
+    const color = colColors[i % colColors.length];
+    const col = new THREE.Mesh(colGeo, lambert(color));
+    col.position.set(x, 2, z); col.castShadow = true; col.receiveShadow = true;
+    scene.add(col);
+    obstacles.push({ x, z, r: 0.7, kind: 'column', color });
+  });
 
-  for (const [x, z] of [[-6, -6], [6, -6], [-6, 6], [6, 6], [-14, 0], [14, 0], [0, -14], [0, 14]])
-    addPillar(x, z, (x + z) % 4 === 0 ? COLORS.cyan : COLORS.magenta);
-  for (const [x, z] of [[-10, -10], [10, 10], [-10, 10], [10, -10], [-18, 8], [18, -8], [8, 18], [-8, -18]])
-    addPlanter(x, z);
-  for (const [x, z] of [[-2.4, 9], [2.4, -9], [9, 2.4], [-9, -2.4], [-2.4, -20], [2.4, 20]])
-    addLamp(x, z);
+  const planterGeo = new THREE.BoxGeometry(1.4, 0.6, 1.4);
+  const trunkGeo = new THREE.CylinderGeometry(0.07, 0.1, 1.2, 8);
+  const canopyGeo = new THREE.IcosahedronGeometry(0.85, 1);
+  const planterMat = lambert(PALETTE.plaster), trunkMat = lambert(0x7a5a44), leafMat = lambert(PALETTE.leaf, { flatShading: true });
+  for (const [x, z] of [[-10, -10], [10, 10], [-10, 10], [10, -10], [-18, 8], [18, -8], [8, 18], [-8, -18]]) {
+    const g = new THREE.Group();
+    const box = new THREE.Mesh(planterGeo, planterMat); box.position.y = 0.3;
+    const trunk = new THREE.Mesh(trunkGeo, trunkMat); trunk.position.y = 1.1;
+    const canopy = new THREE.Mesh(canopyGeo, leafMat); canopy.position.y = 2.1;
+    for (const m of [box, trunk, canopy]) { m.castShadow = true; m.receiveShadow = true; g.add(m); }
+    g.position.set(x, 0, z);
+    scene.add(g);
+    obstacles.push({ x, z, r: 0.95, kind: 'tree', color: PALETTE.leaf });
+  }
+
+  const bollardGeo = new THREE.CylinderGeometry(0.12, 0.12, 0.9, 12);
+  const capGeo = new THREE.CylinderGeometry(0.125, 0.125, 0.08, 12);
+  const bollardMat = lambert(PALETTE.ink), capMat = lambert(PALETTE.ochre);
+  for (const [x, z] of [[-2.4, 9], [2.4, -9], [9, 2.4], [-9, -2.4], [-2.4, -20], [2.4, 20]]) {
+    const b = new THREE.Mesh(bollardGeo, bollardMat); b.position.set(x, 0.45, z); b.castShadow = true;
+    const cap = new THREE.Mesh(capGeo, capMat); cap.position.set(x, 0.94, z);
+    scene.add(b, cap);
+    obstacles.push({ x, z, r: 0.15, kind: 'bollard', color: PALETTE.ink });
+  }
 
   // ---------- wheelchair ----------
   const chair = buildWheelchair();
   scene.add(chair.group);
 
-  // shockwave rings + spike particles emitted on each recognised command
+  // expanding ground ring on each recognised command
   const effects = [];
-  const sparkGeo = new THREE.BufferGeometry();
-  const SPARKS = 400;
-  const sparkPos = new Float32Array(SPARKS * 3), sparkVel = new Float32Array(SPARKS * 3), sparkLife = new Float32Array(SPARKS);
-  sparkGeo.setAttribute('position', new THREE.BufferAttribute(sparkPos, 3));
-  const sparkMat = new THREE.PointsMaterial({ color: COLORS.cyan, size: 0.045, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending, depthWrite: false });
-  const sparks = new THREE.Points(sparkGeo, sparkMat);
-  sparks.frustumCulled = false;
-  scene.add(sparks);
-  let sparkCursor = 0;
-
-  // ---------- post-processing ----------
-  const composer = new EffectComposer(renderer);
-  composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.6, 0.4, 0.55);
-  composer.addPass(bloom);
-  composer.addPass(new OutputPass());
+  const ringGeo = new THREE.RingGeometry(0.5, 0.56, 64);
 
   // ---------- motion state ----------
   const s = {
@@ -186,17 +141,22 @@ export function createScene(canvas, { onBlocked } = {}) {
     lights: false, cameraMode: 'chase', blockedCooldown: 0,
   };
 
+  let dirty = true; // render only when something on screen changes
+  controls.addEventListener('change', () => { dirty = true; });
+
+  let inset = 0; // px hidden behind the bottom panel; the view is re-centred on what stays visible
   function resize() {
     const w = canvas.clientWidth, h = canvas.clientHeight;
     renderer.setSize(w, h, false);
-    composer.setSize(w, h);
-    bloom.setSize(w, h);
-    camera.aspect = w / h; camera.updateProjectionMatrix();
+    camera.aspect = w / (h + inset);
+    camera.setViewOffset(w, h + inset, 0, inset, w, h);
+    dirty = true;
   }
   window.addEventListener('resize', resize);
   resize();
 
-  const fwd = () => new THREE.Vector3(Math.sin(s.heading), 0, Math.cos(s.heading));
+  const fwd = new THREE.Vector3();
+  const setFwd = () => fwd.set(Math.sin(s.heading), 0, Math.cos(s.heading));
 
   function collides(x, z) {
     if (Math.hypot(x, z) > WORLD_RADIUS - CHAIR_RADIUS) return 'boundary';
@@ -204,25 +164,12 @@ export function createScene(canvas, { onBlocked } = {}) {
     return null;
   }
 
-  function burst(color, count = 70) {
-    const c = new THREE.Color(color);
-    // expanding ground ring
-    const ring = new THREE.Mesh(
-      new THREE.RingGeometry(0.46, 0.5, 64),
-      new THREE.MeshBasicMaterial({ color: c, transparent: true, opacity: 0.7, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false }),
-    );
+  function burst(color) {
+    const ring = new THREE.Mesh(ringGeo, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.8, depthWrite: false }));
     ring.rotation.x = -Math.PI / 2; ring.position.set(s.x, 0.02, s.z);
     scene.add(ring); effects.push({ mesh: ring, t: 0 });
-    // spikes flying out of the neuromorphic core
-    sparkMat.color = c;
-    for (let i = 0; i < count; i++) {
-      const k = sparkCursor++ % SPARKS;
-      sparkPos.set([s.x, 0.4, s.z], k * 3);
-      const a = Math.random() * Math.PI * 2, up = 1.5 + Math.random() * 2.5, out = 0.8 + Math.random() * 1.6;
-      sparkVel.set([Math.cos(a) * out, up, Math.sin(a) * out], k * 3);
-      sparkLife[k] = 1;
-    }
-    chair.coreFlash = 1;
+    chair.ledFlash = 1;
+    dirty = true;
   }
 
   // ---------- public controls ----------
@@ -236,21 +183,25 @@ export function createScene(canvas, { onBlocked } = {}) {
     speed(delta) { s.speedLevel = Math.max(0, Math.min(SPEEDS.length - 1, s.speedLevel + delta)); },
     setLights(on) { s.lights = on; },
     burst,
+    setInset(px) { inset = px; resize(); },
     toggleCamera() {
       s.cameraMode = s.cameraMode === 'chase' ? 'orbit' : 'chase';
       controls.enabled = s.cameraMode === 'orbit';
+      dirty = true;
       return s.cameraMode;
     },
-    reset() { Object.assign(s, { x: 0, z: -3, heading: 0, targetHeading: 0, moving: false, velocity: 0 }); },
+    reset() { Object.assign(s, { x: 0, z: -3, heading: 0, targetHeading: 0, moving: false, velocity: 0 }); dirty = true; },
     speedMps: () => SPEEDS[s.speedLevel],
   };
 
   // ---------- main loop ----------
   const clock = new THREE.Clock();
-  const tmp = new THREE.Vector3();
+  const desired = new THREE.Vector3();
   function frame() {
+    requestAnimationFrame(frame);
     const dt = Math.min(clock.getDelta(), 0.05);
     const t = clock.elapsedTime;
+    let changed = dirty;
 
     // heading: smooth rotation toward target
     const dh = s.targetHeading - s.heading;
@@ -261,78 +212,73 @@ export function createScene(canvas, { onBlocked } = {}) {
     const target = s.moving ? SPEEDS[s.speedLevel] : 0;
     s.velocity += (target - s.velocity) * Math.min(1, dt * (s.moving ? 2.5 : 5));
     if (Math.abs(s.velocity) < 0.005) s.velocity = 0;
+    setFwd();
 
     if (s.velocity > 0) {
-      const f = fwd();
-      const nx = s.x + f.x * s.velocity * dt, nz = s.z + f.z * s.velocity * dt;
+      const nx = s.x + fwd.x * s.velocity * dt, nz = s.z + fwd.z * s.velocity * dt;
       // proximity sensor looks a bit ahead so it brakes before touching
-      const hit = collides(s.x + f.x * 0.35, s.z + f.z * 0.35) && collides(nx + f.x * 0.3, nz + f.z * 0.3);
+      const hit = collides(s.x + fwd.x * 0.35, s.z + fwd.z * 0.35) && collides(nx + fwd.x * 0.3, nz + fwd.z * 0.3);
       if (hit) {
         s.moving = false; s.velocity = 0;
-        if (s.blockedCooldown <= 0) { onBlocked?.(hit); burst(COLORS.red, 40); s.blockedCooldown = 1.2; }
+        if (s.blockedCooldown <= 0) { onBlocked?.(hit); burst(PALETTE.rosa); s.blockedCooldown = 1.2; }
       } else { s.x = nx; s.z = nz; }
     }
     s.blockedCooldown -= dt;
+    if (s.velocity > 0 || turnStep !== 0) changed = true;
 
-    // place chair
-    chair.group.position.set(s.x, 0, s.z);
+    // place chair; wheels roll forward and counter-rotate when turning in place
+    chair.group.position.set(s.x, s.velocity > 0 ? Math.sin(t * 18) * 0.004 * s.velocity : 0, s.z);
     chair.group.rotation.y = s.heading;
-    chair.group.position.y = s.velocity > 0 ? Math.sin(t * 18) * 0.004 * s.velocity : 0;
-    // wheels: roll forward + counter-rotate when turning in place
-    const roll = s.velocity * dt / 0.3;
-    const spin = (turnStep * 0.33) / 0.3;
+    const roll = s.velocity * dt / 0.3, spin = (turnStep * 0.33) / 0.3;
     chair.wheelL.rotation.x += roll - spin;
     chair.wheelR.rotation.x += roll + spin;
     for (const c of chair.casters) {
       c.wheel.rotation.x += s.velocity * dt / 0.08;
-      c.fork.rotation.y += ((Math.abs(dh) > 0.01 ? Math.sign(dh) * 0.6 : 0) - c.fork.rotation.y) * Math.min(1, dt * 6);
+      const fork = (Math.abs(dh) > 0.01 ? Math.sign(dh) * 0.6 : 0) - c.fork.rotation.y;
+      c.fork.rotation.y += fork * Math.min(1, dt * 6);
+      if (Math.abs(fork) > 0.001) changed = true;
     }
 
-    // lights
+    // headlights + status LED
     const lf = s.lights ? 1 : 0;
-    chair.lightLevel += (lf - chair.lightLevel) * Math.min(1, dt * 10);
-    chair.spot.intensity = 22 * chair.lightLevel;
-    chair.beam.material.uniforms.uOpacity.value = 0.12 * chair.lightLevel;
-    chair.headMat.color.setRGB(0.25 + 1.6 * chair.lightLevel, 0.25 + 1.6 * chair.lightLevel, 0.3 + 1.6 * chair.lightLevel);
-    chair.tailMat.color.setRGB(0.3 + 1.4 * chair.lightLevel, 0.03, 0.06);
-    // neuromorphic core glow: idle breathing + flash on command
-    chair.coreFlash = Math.max(0, chair.coreFlash - dt * 1.8);
-    const glow = 0.7 + 0.2 * Math.sin(t * 2.5) + chair.coreFlash * 0.9;
-    chair.coreMat.color.setRGB(0.24 * glow, 0.95 * glow, glow);
-    chair.underglow.intensity = 0.5 + chair.coreFlash * 2;
-    chair.halo.material.opacity = 0.3 + chair.coreFlash * 0.4;
+    if (Math.abs(lf - chair.lightLevel) > 0.001) {
+      chair.lightLevel += (lf - chair.lightLevel) * Math.min(1, dt * 10);
+      const l = chair.lightLevel;
+      chair.headMat.color.setRGB(0.35 + 0.65 * l, 0.35 + 0.6 * l, 0.38 + 0.4 * l);
+      changed = true;
+    }
+    if (chair.ledFlash > 0) {
+      chair.ledFlash = Math.max(0, chair.ledFlash - dt * 2);
+      chair.ledMat.color.setHex(PALETTE.ink).lerp(chair.ledOn, chair.ledFlash);
+      changed = true;
+    }
 
-    // effects
     for (let i = effects.length - 1; i >= 0; i--) {
       const e = effects[i]; e.t += dt;
-      const k = e.t / 1.1;
-      e.mesh.scale.setScalar(1 + k * 9);
-      e.mesh.material.opacity = 0.7 * Math.max(0, 1 - k);
-      if (k >= 1) { scene.remove(e.mesh); e.mesh.geometry.dispose(); e.mesh.material.dispose(); effects.splice(i, 1); }
+      const k = e.t / 1.0;
+      e.mesh.scale.setScalar(1 + k * 6);
+      e.mesh.material.opacity = 0.8 * Math.max(0, 1 - k);
+      if (k >= 1) { scene.remove(e.mesh); e.mesh.material.dispose(); effects.splice(i, 1); }
+      changed = true;
     }
-    for (let k = 0; k < SPARKS; k++) {
-      if (sparkLife[k] <= 0) { sparkPos[k * 3 + 1] = -100; continue; }
-      sparkLife[k] -= dt * 0.9;
-      sparkVel[k * 3 + 1] -= 3.2 * dt;
-      for (let a = 0; a < 3; a++) sparkPos[k * 3 + a] += sparkVel[k * 3 + a] * dt;
-      if (sparkPos[k * 3 + 1] < 0.02) { sparkPos[k * 3 + 1] = 0.02; sparkVel[k * 3 + 1] *= -0.3; }
-    }
-    sparkGeo.attributes.position.needsUpdate = true;
-    
-    // camera
-    const chairPos = tmp.set(s.x, 0.6, s.z);
+
+    // sun + shadow box follow the chair
+    sun.target.position.set(s.x, 0, s.z);
+    sun.position.copy(sun.target.position).add(SUN_OFFSET);
+
     if (s.cameraMode === 'chase') {
-      const f = fwd();
-      const desired = new THREE.Vector3(s.x - f.x * 3.3 + f.z * 0.6, 1.75, s.z - f.z * 3.3 - f.x * 0.6);
-      camera.position.lerp(desired, Math.min(1, dt * 3));
-      camera.lookAt(s.x + f.x * 1.2, 0.75, s.z + f.z * 1.2);
+      desired.set(s.x - fwd.x * 5 + fwd.z * 0.9, 2.3, s.z - fwd.z * 5 - fwd.x * 0.9);
+      if (camera.position.distanceToSquared(desired) > 1e-6) {
+        camera.position.lerp(desired, Math.min(1, dt * 3));
+        changed = true;
+      }
+      camera.lookAt(s.x + fwd.x * 1.5, 0.9, s.z + fwd.z * 1.5);
     } else {
-      controls.target.lerp(chairPos, Math.min(1, dt * 4));
+      controls.target.lerp(desired.set(s.x, 0.6, s.z), Math.min(1, dt * 4));
       controls.update();
     }
 
-    composer.render();
-    requestAnimationFrame(frame);
+    if (changed) { renderer.render(scene, camera); dirty = false; }
   }
   requestAnimationFrame(frame);
 
@@ -341,17 +287,16 @@ export function createScene(canvas, { onBlocked } = {}) {
 
 function buildWheelchair() {
   const group = new THREE.Group();
-  const metal = new THREE.MeshStandardMaterial({ color: 0xb8c2d8, roughness: 0.25, metalness: 0.9 });
-  const dark = new THREE.MeshStandardMaterial({ color: 0x1a1d26, roughness: 0.55, metalness: 0.3 });
-  const fabric = new THREE.MeshStandardMaterial({ color: 0x2b3566, roughness: 0.85 });
-  const tire = new THREE.MeshStandardMaterial({ color: 0x0c0c10, roughness: 0.9 });
-  const accent = new THREE.MeshBasicMaterial({ color: COLORS.cyan });
+  const frameMat = new THREE.MeshStandardMaterial({ color: PALETTE.cobalt, roughness: 0.4, metalness: 0.35 });
+  const metal = new THREE.MeshStandardMaterial({ color: 0xc9ccd6, roughness: 0.3, metalness: 0.8 });
+  const dark = new THREE.MeshLambertMaterial({ color: PALETTE.ink });
+  const fabric = new THREE.MeshLambertMaterial({ color: 0x2b2945 });
+  const tire = new THREE.MeshLambertMaterial({ color: 0x18171f });
 
-  const cast = (m) => { m.castShadow = true; m.receiveShadow = true; return m; };
-  const tube = (a, b, r = 0.014, mat = metal) => {
+  const cast = (m) => { m.castShadow = true; return m; };
+  const tube = (a, b, r = 0.016, mat = frameMat) => {
     const va = new THREE.Vector3(...a), vb = new THREE.Vector3(...b);
-    const len = va.distanceTo(vb);
-    const m = cast(new THREE.Mesh(new THREE.CylinderGeometry(r, r, len, 10), mat));
+    const m = cast(new THREE.Mesh(new THREE.CylinderGeometry(r, r, va.distanceTo(vb), 10), mat));
     m.position.copy(va).add(vb).multiplyScalar(0.5);
     m.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), vb.clone().sub(va).normalize());
     group.add(m); return m;
@@ -360,22 +305,20 @@ function buildWheelchair() {
   // big rear wheels
   const makeWheel = (side) => {
     const w = new THREE.Group();
-    const t = cast(new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.028, 14, 48), tire));
+    const t = cast(new THREE.Mesh(new THREE.TorusGeometry(0.3, 0.03, 12, 40), tire));
     t.rotation.y = Math.PI / 2; w.add(t);
-    const rimRing = new THREE.Mesh(new THREE.TorusGeometry(0.272, 0.01, 8, 48), metal);
-    rimRing.rotation.y = Math.PI / 2; w.add(rimRing);
-    const glowRing = new THREE.Mesh(new THREE.TorusGeometry(0.24, 0.006, 6, 48), accent);
-    glowRing.rotation.y = Math.PI / 2; glowRing.position.x = side * 0.012; w.add(glowRing);
-    const push = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.009, 8, 48), metal);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(0.27, 0.01, 6, 40), metal);
+    rim.rotation.y = Math.PI / 2; w.add(rim);
+    const push = new THREE.Mesh(new THREE.TorusGeometry(0.26, 0.009, 6, 40), metal);
     push.rotation.y = Math.PI / 2; push.position.x = side * 0.045; w.add(push);
-    for (let i = 0; i < 14; i++) {
-      const a = (i / 14) * Math.PI * 2;
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
       const sp = new THREE.Mesh(new THREE.CylinderGeometry(0.003, 0.003, 0.27, 4), metal);
       sp.position.set(0, Math.cos(a) * 0.135, Math.sin(a) * 0.135);
       sp.rotation.x = -a;
       w.add(sp);
     }
-    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.06, 16), dark);
+    const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.06, 12), dark);
     hub.rotation.z = Math.PI / 2; w.add(hub);
     w.position.set(side * 0.31, 0.3, -0.1);
     group.add(w);
@@ -391,12 +334,10 @@ function buildWheelchair() {
     const stem = new THREE.Mesh(new THREE.CylinderGeometry(0.012, 0.012, 0.08, 8), metal);
     stem.position.y = -0.02; fork.add(stem);
     const wheel = new THREE.Group();
-    const cw = cast(new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.02, 10, 24), tire));
+    const cw = cast(new THREE.Mesh(new THREE.TorusGeometry(0.06, 0.02, 8, 20), tire));
     cw.rotation.y = Math.PI / 2; wheel.add(cw);
     wheel.position.set(0, -0.12, -0.03);
     fork.add(wheel);
-    const arm = new THREE.Mesh(new THREE.BoxGeometry(0.01, 0.1, 0.02), metal);
-    arm.position.set(0.028, -0.08, -0.015); fork.add(arm);
     group.add(fork);
     casters.push({ fork, wheel });
   }
@@ -423,67 +364,29 @@ function buildWheelchair() {
   }
   const foot = cast(new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.02, 0.14), dark));
   foot.position.set(0, 0.14, 0.46); group.add(foot);
-
-  // "neuromorphic core" battery/compute pack under the seat
-  const coreMat = new THREE.MeshBasicMaterial({ color: COLORS.cyan });
   const pack = cast(new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.12, 0.24), dark));
   pack.position.set(0, 0.36, -0.02); group.add(pack);
-  const strip = new THREE.Mesh(new THREE.BoxGeometry(0.31, 0.015, 0.245), coreMat);
-  strip.position.set(0, 0.36, -0.02); group.add(strip);
 
-  // control box on right armrest with glowing screen
+  // controller on the right armrest; its LED flashes when a command is accepted
   const ctrl = cast(new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.05, 0.1), dark));
   ctrl.position.set(-0.25, 0.725, 0.14); group.add(ctrl);
-  const screen = new THREE.Mesh(new THREE.PlaneGeometry(0.06, 0.07), coreMat);
-  screen.rotation.x = -Math.PI / 2; screen.position.set(-0.25, 0.752, 0.14); group.add(screen);
-  const stick = new THREE.Mesh(new THREE.SphereGeometry(0.018, 12, 8), new THREE.MeshBasicMaterial({ color: COLORS.magenta }));
-  stick.position.set(-0.25, 0.79, 0.17); group.add(stick);
+  const ledMat = new THREE.MeshBasicMaterial({ color: PALETTE.ink });
+  const led = new THREE.Mesh(new THREE.SphereGeometry(0.016, 10, 8), ledMat);
+  led.position.set(-0.25, 0.76, 0.17); group.add(led);
 
-  // headlights (on front of armrests) + tail lights
-  const headMat = new THREE.MeshBasicMaterial({ color: 0x404050 });
-  const tailMat = new THREE.MeshBasicMaterial({ color: 0x400810 });
+  // headlights on the armrests
+  const headMat = new THREE.MeshBasicMaterial({ color: 0x5a5a62 });
   for (const x of [0.25, -0.25]) {
-    const h = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.02, 16), headMat);
+    const h = new THREE.Mesh(new THREE.CylinderGeometry(0.022, 0.022, 0.02, 12), headMat);
     h.rotation.x = Math.PI / 2; h.position.set(x, 0.68, 0.2); group.add(h);
-    const tl = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.02, 0.01), tailMat);
-    tl.position.set(x * 0.8, 0.95, -0.26); group.add(tl);
   }
 
-  const spot = new THREE.SpotLight(0xe6f4ff, 0, 16, 0.45, 0.55, 1.2);
-  spot.position.set(0, 0.7, 0.25);
-  spot.castShadow = true;
-  spot.shadow.mapSize.set(1024, 1024);
-  spot.target.position.set(0, 0, 5);
-  group.add(spot, spot.target);
-
-  // volumetric beam: open cone with alpha fading along its length
-  const beamGeo = new THREE.ConeGeometry(1.9, 6, 32, 1, true);
-  beamGeo.translate(0, -3, 0);
-  beamGeo.rotateX(-Math.PI / 2 + 0.12); // point forward (+z), tilted slightly down
-  const beam = new THREE.Mesh(beamGeo, new THREE.ShaderMaterial({
-    transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
-    uniforms: { uOpacity: { value: 0 } },
-    vertexShader: `varying float vD; void main(){ vD = clamp(length(position)/6.0, 0.0, 1.0);
-      gl_Position = projectionMatrix*modelViewMatrix*vec4(position,1.0);} `,
-    fragmentShader: `uniform float uOpacity; varying float vD; void main(){ gl_FragColor = vec4(0.85,0.93,1.0, uOpacity*pow(1.0-vD,1.6)); }`,
-  }));
-  beam.position.set(0, 0.68, 0.22);
-  group.add(beam);
-
-  // cyan underglow + ground halo
-  const underglow = new THREE.PointLight(COLORS.cyan, 1, 1.8, 2);
-  underglow.position.set(0, 0.32, 0); group.add(underglow);
-  const halo = new THREE.Mesh(
-    new THREE.RingGeometry(0.55, 0.6, 64),
-    new THREE.MeshBasicMaterial({ color: COLORS.cyan, transparent: true, opacity: 0.4, blending: THREE.AdditiveBlending, depthWrite: false }),
-  );
-  halo.rotation.x = -Math.PI / 2; halo.position.y = 0.01; group.add(halo);
-
-  // a simple seated rider silhouette so the chair reads at a distance
-  const rider = new THREE.MeshStandardMaterial({ color: 0x6f7fb8, roughness: 0.7 });
-  const torso = cast(new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.3, 6, 12), rider));
+  // a simple seated rider so the chair reads at a distance
+  const rider = new THREE.MeshLambertMaterial({ color: 0x8a7fb8 });
+  const skin = new THREE.MeshLambertMaterial({ color: 0xc99a7c });
+  const torso = cast(new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.3, 4, 10), rider));
   torso.position.set(0, 0.86, -0.1); torso.rotation.x = -0.08; group.add(torso);
-  const head = cast(new THREE.Mesh(new THREE.SphereGeometry(0.1, 20, 14), rider));
+  const head = cast(new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 12), skin));
   head.position.set(0, 1.2, -0.08); group.add(head);
   for (const x of [0.09, -0.09]) {
     const thigh = cast(new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.3, 4, 8), rider));
@@ -492,5 +395,5 @@ function buildWheelchair() {
     shin.position.set(x, 0.37, 0.34); shin.rotation.x = 0.25; group.add(shin);
   }
 
-  return { group, wheelL, wheelR, casters, spot, beam, headMat, tailMat, coreMat, underglow, halo, lightLevel: 0, coreFlash: 0 };
+  return { group, wheelL, wheelR, casters, headMat, ledMat, ledOn: new THREE.Color(PALETTE.rosa), lightLevel: 0, ledFlash: 0 };
 }
