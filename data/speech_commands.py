@@ -25,6 +25,8 @@ import torchaudio
 import soundfile as sf
 from torch.utils.data import Dataset
 
+from .noise import augment_waveform
+
 KEYWORDS = ["yes", "no", "up", "down", "left", "right", "on", "off", "stop", "go"]
 LABEL_TO_IDX = {w: i for i, w in enumerate(KEYWORDS)}
 
@@ -139,7 +141,7 @@ class SpeechCommandsSpikes(Dataset):
     def __init__(self, data_root: str, split: str = "training",
                  coding: str = "rate", n_mfcc: int = N_MFCC, n_time_steps: int = N_TIME_STEPS,
                  max_per_class: int | None = None, download_if_missing: bool = True,
-                 output: str = "spikes", noise_fn=None):
+                 output: str = "spikes", noise_fn=None, augment: bool = False):
         """
         output: 'spikes' (default, for the SNN) or 'mfcc' (continuous, for
         the CNN/LSTM baselines). Both share the exact same file list, split,
@@ -153,6 +155,7 @@ class SpeechCommandsSpikes(Dataset):
         assert output in ("spikes", "mfcc")
         self.output = output
         self.noise_fn = noise_fn
+        self.augment = augment
         self.encoder = MFCCSpikeEncoder(coding=coding, n_mfcc=n_mfcc, n_time_steps=n_time_steps)
         self.samples = []  # list of (filepath, label_idx)
 
@@ -259,6 +262,8 @@ class SpeechCommandsSpikes(Dataset):
         else:
             waveform = waveform[:CLIP_SAMPLES]
 
+        if self.augment:
+            waveform = augment_waveform(waveform)
         if self.noise_fn is not None:
             waveform = self.noise_fn(waveform)
 

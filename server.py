@@ -63,7 +63,7 @@ def load_model(checkpoint: str | None, hidden_sizes: list[int]):
     candidates = [Path(checkpoint)] if checkpoint else DEFAULT_CHECKPOINTS
     for path in candidates:
         if path.is_file():
-            model.load_state_dict(torch.load(path, map_location="cpu"))
+            model = SNNClassifier.from_state_dict(torch.load(path, map_location="cpu"))
             state.update(loaded=True, checkpoint=str(path))
             print(f"[neurochair] loaded checkpoint: {path}")
             break
@@ -79,7 +79,11 @@ def load_model(checkpoint: str | None, hidden_sizes: list[int]):
 def load_personal():
     if PERSONAL_CHECKPOINT.is_file() and state["loaded"]:
         personal = copy.deepcopy(state["base_model"])
-        personal.load_state_dict(torch.load(PERSONAL_CHECKPOINT, map_location="cpu"))
+        try:
+            personal.load_state_dict(torch.load(PERSONAL_CHECKPOINT, map_location="cpu"))
+        except RuntimeError:
+            print("[neurochair] voice calibration doesn't match this checkpoint -- ignored, recalibrate in the UI.")
+            return
         personal.eval()
         state.update(model=personal, personalized=True)
         print(f"[neurochair] loaded voice calibration: {PERSONAL_CHECKPOINT}")
@@ -280,7 +284,7 @@ app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--checkpoint", type=str, default=None)
-    parser.add_argument("--hidden_sizes", type=int, nargs="+", default=[128, 128])
+    parser.add_argument("--hidden_sizes", type=int, nargs="+", default=[128, 128], help="only used without a checkpoint")
     parser.add_argument("--samples", type=int, default=8, help="Bernoulli spike samples averaged per window")
     parser.add_argument("--port", type=int, default=8000)
     parser.add_argument("--base_only", action="store_true", help="ignore checkpoints/snn_personal.pt")

@@ -27,7 +27,7 @@ chair auto-brakes before obstacles.
    ```
 3. Open http://localhost:8000 in Chrome or Edge. Mic access needs `localhost` or HTTPS.
 
-Options: `--checkpoint <path>`, `--hidden_sizes 128 128` (must match training), `--samples 8`, `--port 8000`.
+Options: `--checkpoint <path>`, `--samples 8`, `--port 8000`. Layer sizes and recurrence are read from the checkpoint.
 Without a checkpoint it runs an untrained model and the UI shows an "untrained model" warning.
 
 Keyboard: W go · S/Space stop · A/D turn · Q/E speed · L lights · C orbit camera · R reset · M mic.

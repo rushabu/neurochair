@@ -18,16 +18,18 @@ from .lif import LIFNeuron, LeakyReadout
 class SNNLayer(nn.Module):
     def __init__(self, in_features: int, out_features: int,
                  threshold: float = 1.0, leak: float = 0.9,
-                 reset_mechanism: str = "hard", surrogate: str = "fast_sigmoid"):
+                 reset_mechanism: str = "hard", surrogate: str = "fast_sigmoid", recurrent: bool = False):
         super().__init__()
         self.synapse = nn.Linear(in_features, out_features)
+        # optional spike feedback within the layer, so neurons carry context across time steps
+        self.recurrent = nn.Linear(out_features, out_features, bias=False) if recurrent else None
         self.neuron = LIFNeuron(threshold=threshold, leak=leak,
                                  reset_mechanism=reset_mechanism, surrogate=surrogate)
 
     def forward(self, x: torch.Tensor):
         """x: (batch, time, in_features) -> spikes: (batch, time, out_features)"""
         current = self.synapse(x)  # applies the same Linear at every time step
-        spikes, mem_trace = self.neuron(current)
+        spikes, mem_trace = self.neuron(current, self.recurrent)
         return spikes, mem_trace
 
 

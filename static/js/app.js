@@ -123,28 +123,25 @@ function drawRaster(now) {
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   g.clearRect(0, 0, W, H);
 
-  const groups = [
-    { key: 'input', n: 20, color: '#ffb547' },
-    { key: 'h1', n: 128, color: '#3ef2ff' },
-    { key: 'h2', n: 128, color: '#ff3ea5' },
-  ];
-  const gap = 6, rowsTotal = 20 + 128 + 128;
-  const rowH = (H - gap * 2 - 8) / rowsTotal;
-  const T = rasterData?.shape.T ?? 50;
-  const colW = (W - 8) / T;
-
   // idle: faint background noise so the panel never looks dead
   if (!rasterData) {
     g.fillStyle = 'rgba(62,242,255,0.10)';
     for (let i = 0; i < 90; i++) g.fillRect(4 + Math.random() * (W - 8), 4 + Math.random() * (H - 8), 1.5, 1.5);
     return;
   }
+  const { shape } = rasterData;
+  const hiddenColors = ['#3ef2ff', '#ff3ea5', '#8a6bff'];
+  const groups = [{ n: shape.input, color: '#ffb547', data: rasterData.input }, ...shape.hidden.map((n, i) =>
+    ({ n, color: hiddenColors[i % hiddenColors.length], data: rasterData.hidden[i] }))];
+  const gap = 6, rowsTotal = groups.reduce((sum, grp) => sum + grp.n, 0);
+  const rowH = (H - gap * (groups.length - 1) - 8) / rowsTotal;
+  const T = shape.T;
+  const colW = (W - 8) / T;
   const progress = Math.min(1, (now - rasterStart) / 700);
   const tMax = progress * T;
   let y0 = 4;
-  const sets = [rasterData.input, rasterData.hidden[0], rasterData.hidden[1]];
-  groups.forEach((grp, gi) => {
-    const [ts, ns] = sets[gi] || [[], []];
+  groups.forEach((grp) => {
+    const [ts, ns] = grp.data;
     g.fillStyle = 'rgba(255,255,255,0.03)';
     g.fillRect(4, y0, W - 8, grp.n * rowH);
     g.fillStyle = grp.color;

@@ -18,12 +18,12 @@ from .layer import SNNLayer, ReadoutLayer
 class SNNClassifier(nn.Module):
     def __init__(self, in_features: int, hidden_sizes: list[int], n_classes: int,
                  threshold: float = 1.0, leak: float = 0.9,
-                 reset_mechanism: str = "hard", surrogate: str = "fast_sigmoid"):
+                 reset_mechanism: str = "hard", surrogate: str = "fast_sigmoid", recurrent: bool = False):
         super().__init__()
         sizes = [in_features] + hidden_sizes
         self.hidden_layers = nn.ModuleList([
             SNNLayer(sizes[i], sizes[i + 1], threshold=threshold, leak=leak,
-                     reset_mechanism=reset_mechanism, surrogate=surrogate)
+                     reset_mechanism=reset_mechanism, surrogate=surrogate, recurrent=recurrent)
             for i in range(len(sizes) - 1)
         ])
         # Readout is a non-spiking leaky integrator, NOT another SNNLayer -- see
@@ -63,6 +63,20 @@ class SNNClassifier(nn.Module):
         if return_spikes:
             return logits, hidden_layer_spikes, readout_mem_trace
         return logits
+
+    @classmethod
+    def from_state_dict(cls, state_dict: dict) -> "SNNClassifier":
+        """Rebuild the model with the layer sizes and recurrence stored in a checkpoint."""
+        hidden_sizes, i = [], 0
+        while f"hidden_layers.{i}.synapse.weight" in state_dict:
+            hidden_sizes.append(state_dict[f"hidden_layers.{i}.synapse.weight"].shape[0])
+            i += 1
+        model = cls(in_features=state_dict["hidden_layers.0.synapse.weight"].shape[1],
+                    hidden_sizes=hidden_sizes,
+                    n_classes=state_dict["readout.synapse.weight"].shape[0],
+                    recurrent="hidden_layers.0.recurrent.weight" in state_dict)
+        model.load_state_dict(state_dict)
+        return model
 
     @torch.no_grad()
     def total_spikes(self, x: torch.Tensor) -> int:

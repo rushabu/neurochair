@@ -35,10 +35,11 @@ class LIFNeuron(nn.Module):
         self.reset_mechanism = reset_mechanism
         self.spike_fn = get_surrogate(surrogate)
 
-    def forward(self, input_current: torch.Tensor):
+    def forward(self, input_current: torch.Tensor, recurrent=None):
         """
         input_current: (batch, time, features) -- pre-synaptic current at
         each time step (e.g. output of a Linear/Conv layer applied per step).
+        recurrent: optional Linear(features, features) fed with the previous step's spikes.
 
         Returns:
             spikes: (batch, time, features) -- 0/1 spike train
@@ -48,11 +49,15 @@ class LIFNeuron(nn.Module):
         device = input_current.device
 
         mem = torch.zeros(batch, features, device=device)
+        spike = torch.zeros(batch, features, device=device)
         spikes = []
         mem_trace = []
 
         for t in range(time_steps):
-            mem = self.leak * mem + input_current[:, t, :]
+            current = input_current[:, t, :]
+            if recurrent is not None:
+                current = current + recurrent(spike)
+            mem = self.leak * mem + current
             spike = self.spike_fn(mem - self.threshold)
 
             if self.reset_mechanism == "hard":
