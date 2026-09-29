@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>NeuroChair</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Space+Grotesk:wght@400;500;700&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/static/styles.css" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <canvas id="world"></canvas>
+
+  <!-- top bar -->
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo"><span></span><span></span><span></span></div>
+      <div>
+        <h1>Neuro<em>Chair</em></h1>
+        <p>Voice-controlled wheelchair · Spiking Neural Network</p>
+      </div>
+    </div>
+    <div class="pills">
+      <span class="pill" id="modelPill">model…</span>
+      <span class="pill" id="micPill"><i></i>mic off</span>
+    </div>
+  </header>
+
+  <!-- left: voice link -->
+  <aside class="panel left">
+    <section class="card">
+      <div class="card-head"><h2>Voice link</h2><span class="hint">M</span></div>
+      <button id="micBtn" class="mic-btn" aria-pressed="false">
+        <svg viewBox="0 0 24 24" width="22" height="22"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.92V21h2v-3.08A7 7 0 0 0 19 11h-2z"/></svg>
+        <span id="micBtnLabel">Start listening</span>
+      </button>
+      <canvas id="levelCanvas" class="level" height="40"></canvas>
+      <label class="slider">
+        <span>Confidence gate <b id="confVal">45%</b></span>
+        <input id="confSlider" type="range" min="10" max="90" value="45" />
+      </label>
+      <label class="slider">
+        <span>Mic sensitivity <b id="sensVal">4×</b></span>
+        <input id="sensSlider" type="range" min="2" max="10" value="4" />
+      </label>
+      <label class="toggle"><input id="speedToggle" type="checkbox" checked /> <span>Listen for “up / down” (speed)</span></label>
+      <p class="fine">“Stop” is accepted at a lower confidence — a safety bias.</p>
+      <button id="calibBtn" class="calib-btn">Calibrate to my voice</button>
+      <button id="calibReset" class="link-btn" hidden>Reset to base model</button>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Commands</h2><span class="hint">click or say</span></div>
+      <div id="chips" class="chips"></div>
+    </section>
+
+    <section class="card map-card">
+      <div class="card-head"><h2>Map</h2><span class="hint">C camera · R reset</span></div>
+      <canvas id="minimap" width="240" height="240"></canvas>
+    </section>
+  </aside>
+
+  <!-- right: SNN decoder -->
+  <aside class="panel right">
+    <section class="card">
+      <div class="card-head"><h2>SNN decoder</h2><span class="hint" id="latency">—</span></div>
+      <div class="heard">
+        <div class="ring" id="confRing"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" class="track"/><circle cx="50" cy="50" r="44" class="bar" id="ringBar"/></svg><span id="confPct">—</span></div>
+        <div>
+          <div class="heard-label">heard</div>
+          <div class="heard-word" id="heardWord">…</div>
+          <div class="heard-action" id="heardAction">say a command</div>
+        </div>
+      </div>
+      <div id="bars" class="bars"></div>
+    </section>
+
+    <section class="card">
+      <div class="card-head"><h2>Spike raster</h2><span class="hint">time →</span></div>
+      <canvas id="raster" height="220"></canvas>
+      <div class="legend"><span class="lg in">input 20</span><span class="lg h1">LIF-1 128</span><span class="lg h2">LIF-2 128</span></div>
+      <div class="stats">
+        <div><b id="stSpikes">—</b><span>hidden spikes</span></div>
+        <div><b id="stSparsity">—</b><span>silent neurons</span></div>
+        <div><b id="stSops">—</b><span>synaptic ops</span></div>
+        <div><b id="stRatio">—</b><span>fewer ops vs dense</span></div>
+      </div>
+    </section>
+  </aside>
+
+  <!-- bottom telemetry -->
+  <footer class="telemetry">
+    <div class="tm"><span>state</span><b id="tmState">PARKED</b></div>
+    <div class="tm"><span>speed</span><b id="tmSpeed">0.0 <small>m/s</small></b></div>
+    <div class="tm"><span>gear</span><b id="tmGear">2 / 3</b></div>
+    <div class="tm compass"><span>heading</span><b id="tmHeading">000°</b></div>
+    <div class="tm"><span>lights</span><b id="tmLights">OFF</b></div>
+    <div class="log" id="log"></div>
+  </footer>
+
+  <div id="toast" class="toast"></div>
+
+  <!-- voice calibration -->
+  <div id="calib" class="intro hide">
+    <div class="intro-card calib-card">
+      <div id="calibRecord">
+        <h2>Calibrate to your voice</h2>
+        <p>Say each command when it lights up. The SNN is then fine-tuned on your recordings.</p>
+        <div class="calib-word" id="calibWord">go</div>
+        <div class="calib-take" id="calibTake">take 1 of 5 — say it now</div>
+        <div class="calib-grid" id="calibGrid"></div>
+        <p class="fine">✓ / ✗ = whether the <b>original</b> model already got that take right.</p>
+      </div>
+      <div id="calibTraining" hidden>
+        <div class="spinner"></div>
+        <h2>Fine-tuning the SNN on your voice…</h2>
+        <p class="fine">Surrogate-gradient training with time-shift, gain and noise augmentation. Takes about 30 seconds.</p>
+      </div>
+      <div id="calibResult" hidden>
+        <h2>Calibrated</h2>
+        <div class="calib-result">
+          <div><span>original model</span><b id="resBase">—</b></div>
+          <div class="arrow">→</div>
+          <div><span>calibrated</span><b id="resPersonal">—</b></div>
+        </div>
+        <p class="fine" id="resNote"></p>
+      </div>
+      <div class="intro-actions">
+        <button id="calibCancel">Cancel</button>
+        <button id="calibDone" class="primary" hidden>Start driving</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- intro -->
+  <div id="intro" class="intro">
+    <div class="intro-card">
+      <div class="logo big"><span></span><span></span><span></span></div>
+      <h1>Neuro<em>Chair</em></h1>
+      <p>A hands-free wheelchair driven by a <b>spiking neural network</b> built from scratch —
+        leaky integrate-and-fire neurons that only compute when they spike.</p>
+      <div class="intro-grid">
+        <div><kbd>go</kbd> drive</div><div><kbd>stop</kbd> brake</div>
+        <div><kbd>left</kbd> turn left</div><div><kbd>right</kbd> turn right</div>
+        <div><kbd>up</kbd> faster</div><div><kbd>down</kbd> slower</div>
+        <div><kbd>on</kbd> lights on</div><div><kbd>off</kbd> lights off</div>
+      </div>
+      <div class="intro-actions">
+        <button id="introMic" class="primary">Enable microphone</button>
+        <button id="introSkip">Keyboard only</button>
+      </div>
+      <p class="fine">Keys: W go · S / Space stop · A / D turn · Q / E speed · L lights · C camera</p>
+    </div>
+  </div>
+
+  <script type="module" src="/static/js/app.js"></script>
+</body>
+</html>

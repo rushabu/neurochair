@@ -1,0 +1,5 @@
+torch>=2.0
+torchaudio>=2.0   # must match your torch version (e.g. torch 2.8 -> torchaudio 2.8)
+soundfile>=0.12
+fastapi>=0.110
+uvicorn>=0.29
