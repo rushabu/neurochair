@@ -1,68 +1,245 @@
-# NeuroChair — voice-controlled wheelchair
+# NeuroChair
 
-A 3D web app that drives a wheelchair using a from-scratch **Spiking Neural Network** keyword spotter
-(model + training: [snn-keyword-spotter](https://github.com/rushabu/snn-keyword-spotter)).
+**A voice-controlled wheelchair simulator powered by a spiking neural network.**
 
-Browser mic → voice-activity detection → FastAPI server → MFCC → spike train → SNN → command → 3D wheelchair.
+Speak a command into your microphone to drive a wheelchair through a 3D courtyard. NeuroChair runs speech inference locally, displays neural spike activity, and can fine-tune the model on your voice. You can also drive with the keyboard or on-screen buttons.
 
-| Say | Action |
-|-----|--------|
-| `go` / `stop` | drive / brake |
-| `left` / `right` | turn 90° |
-| `up` / `down` | speed gear + / − (toggleable) |
-| `on` / `off` | headlights |
+The model and training pipeline come from [snn-keyword-spotter](https://github.com/rushabu/snn-keyword-spotter).
 
-`yes` / `no` are masked out, so the SNN only chooses among the commands the chair listens for.
-Low-confidence predictions are ignored, `stop` has a lower confidence gate as a safety bias, and the
-chair auto-brakes before obstacles.
+## Features
 
-## Setup
+- Eight voice commands for driving, steering, speed, and headlights.
+- A Three.js scene with a follow camera, orbit camera, minimap, and obstacle braking.
+- Local inference through a FastAPI backend with CPU support.
+- Voice calibration and corrections saved between sessions.
+- A decoder display showing spike rasters, confidence, latency, and estimated synaptic operations.
+- Adjustable confidence threshold, microphone sensitivity, and speed command recognition.
 
-1. Put the trained checkpoint at `checkpoints/snn_checkpoint.pt`. It comes from the Kaggle notebook: the SNN training cell
-   saves it to `outputs/snn_checkpoint.pt`.
-2. Install and run:
-   ```bash
-   pip install -r requirements.txt
-   python server.py
-   ```
-3. Open http://localhost:8000 in Chrome or Edge. Mic access needs `localhost` or HTTPS.
+## Requirements
 
-Options: `--checkpoint <path>`, `--samples 8`, `--port 8000`. Layer sizes and recurrence are read from the checkpoint.
-Without a checkpoint it runs an untrained model and the UI shows an "untrained model" warning.
+The current setup has been verified on **Windows 11 with CPython 3.13.6, 64-bit**, using CPU inference.
 
-Keyboard: W go · S/Space stop · A/D turn · Q/E speed · L lights · C orbit camera · R reset · M mic.
+| Requirement | Details |
+| --- | --- |
+| Python | CPython 3.13, 64-bit |
+| Browser | Chrome or Edge with WebGL 2 support and graphics acceleration |
+| Microphone | Needed for voice commands and calibration; optional for keyboard use |
+| Internet | Needed to install packages and load the frontend's CDN modules and fonts |
 
-## Calibrate to your voice (recommended)
+CUDA, FFmpeg, and Node.js are not required for this application. Audio processing and model inference run on your computer; frontend libraries and fonts load from external services.
 
-The base SNN reaches 58.6% on the Speech Commands test set, and a live laptop mic differs from that
-data (mic, room, accent). Click **Calibrate to my voice**, say each of the 8 commands 5 times, and the
-SNN is fine-tuned on your recordings (about 30 s on CPU). The UI then shows the original vs calibrated accuracy
-on takes held out from fine-tuning.
+## Quick start: this PC
 
-- Recordings are saved in `recordings/session_*/`; the calibrated weights in `checkpoints/snn_personal.pt`,
-  which load automatically on the next start (`--base_only` ignores them).
-- **Reset to base model** in the UI deletes `snn_personal.pt` and goes back to the original weights.
-- Calibration is per speaker: it improves accuracy for the person who recorded and may reduce it for others.
+If the project environment is already installed, open PowerShell and run:
 
-## Project layout
-
-```
-server.py              FastAPI backend: audio -> spikes -> SNN -> prediction + spike rasters
-personalize.py         voice calibration: augmentation + fine-tuning the SNN on the user's clips
-snn/                   LIF neuron, SNN layers, classifier (copied from snn-keyword-spotter)
-data/speech_commands.py  MFCC -> spike encoder, same as training (copied)
-static/                3D frontend (Three.js, no build step)
-  js/scene.js          wheelchair + world, lights, physics, effects
-  js/audio.js          mic capture + voice activity detection
-  js/app.js            HUD, decoder panel, command logic
-checkpoints/           put snn_checkpoint.pt here
+```powershell
+cd C:\Users\Rushabh\Downloads\Projects\neurochair
+.\start.cmd
 ```
 
-`snn/` and `data/` must stay identical to the versions the checkpoint was trained with.
+Open [http://localhost:8000](http://localhost:8000) in your browser.
 
-## Decoder panel
+Keep the terminal open while using the app. To stop the server, press **Ctrl+C** in that terminal. Run `start.cmd` again whenever you want to restart it; reinstalling dependencies is unnecessary.
 
-- **Probabilities**: softmax over the active commands, averaged over 8 Bernoulli spike samples × 3 time shifts (0, ±80 ms)
-- **Spike raster**: input spikes (20 MFCC channels) and both LIF hidden layers over 50 time steps
-- **Silent neurons**: fraction of hidden neuron-timesteps that did not spike
-- **Synaptic ops vs dense**: event-driven accumulates (spikes × fan-out) vs the MACs a dense net of the same shape would do
+## First-time setup
+
+Run these commands from the project folder:
+
+```powershell
+py -3.13 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt
+.\start.cmd
+```
+
+No virtual environment activation is needed. In your editor, select `.venv\Scripts\python.exe` as the Python interpreter.
+
+### Trained checkpoint
+
+Place the trained model at:
+
+```text
+checkpoints/snn_checkpoint.pt
+```
+
+The training notebook saves this file as `outputs/snn_checkpoint.pt`. Model checkpoints are ignored by Git, so a fresh clone may not include one.
+
+At startup, the server reads the checkpoint's layer sizes and recurrence settings. If the checkpoint is missing, the app still opens with an **untrained model** warning and random predictions. Use a trained checkpoint for meaningful voice recognition.
+
+## Using the app
+
+1. Start the server and open the local URL.
+2. Select **Turn on microphone** and allow browser microphone access, or select **Use keyboard only**.
+3. Say one command at a time, leaving a short pause between words.
+4. Open **Settings** to adjust recognition or calibrate the model to your voice.
+
+### Voice commands
+
+| Command | Action |
+| --- | --- |
+| `go` | Drive forward |
+| `stop` | Brake |
+| `left` | Turn left by 90 degrees |
+| `right` | Turn right by 90 degrees |
+| `up` | Increase speed gear |
+| `down` | Decrease speed gear |
+| `on` | Turn headlights on |
+| `off` | Turn headlights off |
+
+There are three speed gears. Recognition of `up` and `down` can be disabled in Settings. The model's `yes` and `no` classes are excluded from wheelchair commands.
+
+Low-confidence predictions are ignored. The `stop` command uses a lower confidence threshold, and the simulated chair automatically brakes before obstacles and the courtyard boundary.
+
+### Keyboard controls
+
+| Key | Action |
+| --- | --- |
+| W / Up arrow | Drive forward |
+| S / Down arrow / Space | Brake |
+| A / Left arrow | Turn left |
+| D / Right arrow | Turn right |
+| E / + | Increase speed gear |
+| Q / - | Decrease speed gear |
+| L | Toggle headlights |
+| M | Toggle microphone |
+| C | Switch between follow and orbit cameras |
+| R | Reset the chair to its starting position |
+| Esc | Close Settings |
+
+You can also click the command buttons. In orbit mode, drag to look around. When a button has focus, Space activates that button.
+
+## Calibrate to your voice
+
+Differences in microphones, accents, and room noise can affect recognition. Calibration fine-tunes a copy of the base model using your recordings.
+
+1. Open **Settings → Calibrate to my voice**.
+2. Say each of the eight commands five times as prompted: 40 recordings in total.
+3. Wait for training to finish. Runtime depends on your CPU.
+4. Review the before/after scores, which use recordings held out from fine-tuning, then select **Start driving**.
+
+The final personalized model is trained on all saved recordings and loads automatically on the next start when a base checkpoint is available. Calibration results depend on the speaker and recordings; an improvement is not guaranteed.
+
+### Correct a misheard command
+
+After a misheard utterance, hold **Shift** and press the key for the intended command. For example, **Shift+W** saves the last utterance as `go` and executes the drive command. Open Settings and choose **Retrain with corrections** to train on the saved clips.
+
+Retraining uses clips from all saved calibration sessions and corrections. For consistent personalization, keep these recordings associated with the same speaker.
+
+### Saved files
+
+| Location | Contents |
+| --- | --- |
+| `checkpoints/snn_checkpoint.pt` | Base trained model |
+| `checkpoints/snn_personal.pt` | Personalized model |
+| `recordings/session_*/` | Calibration recordings |
+| `recordings/corrections/` | Corrected utterances |
+
+**Reset to base model** removes the personalized checkpoint and switches back to the base model. It keeps your recordings, which can be used during later retraining. To temporarily ignore personalized weights, launch with `--base_only`.
+
+## Launch options
+
+```powershell
+# Use a different port, then open http://localhost:8001
+.\start.cmd --port 8001
+
+# Use a specific trained checkpoint
+.\start.cmd --checkpoint "C:\path\to\snn_checkpoint.pt"
+
+# Ignore personalized weights for this run
+.\start.cmd --base_only
+
+# Average fewer spike samples per audio window
+.\start.cmd --samples 4
+```
+
+| Option | Default | Purpose |
+| --- | --- | --- |
+| `--port` | `8000` | Local server port |
+| `--checkpoint` | `checkpoints/snn_checkpoint.pt` | Base checkpoint path |
+| `--samples` | `8` | Bernoulli spike samples per window; use a positive integer |
+| `--base_only` | Disabled | Skip loading personalized weights |
+| `--hidden_sizes` | `128 128` | Hidden layer sizes when no checkpoint is available |
+
+The server listens on `127.0.0.1`. The Windows launcher uses the project's virtual environment and resolves the server path relative to its own location.
+
+You can also launch directly from the project folder:
+
+```powershell
+.\.venv\Scripts\python.exe server.py
+```
+
+Or use Uvicorn with the default model settings:
+
+```powershell
+.\.venv\Scripts\python.exe -m uvicorn server:app --host 127.0.0.1 --port 8000
+```
+
+## How recognition works
+
+```text
+Browser microphone
+  → voice activity detection
+  → mono 16 kHz float32 audio
+  → loudest one-second window and two shifted copies
+  → MFCC features
+  → Bernoulli spike trains
+  → spiking neural network
+  → averaged logits and command masking
+  → confidence gate
+  → simulated wheelchair action
+```
+
+By default, inference uses eight spike samples for each of three windows: the selected window and copies shifted by ±80 ms. The encoder produces 20 MFCC channels over 50 time steps. MFCC extraction uses TorchAudio; WAV reading and writing use SoundFile.
+
+The decoder's spike raster shows input and hidden-layer activity. **Silent neurons** measures the fraction of hidden neuron time steps without spikes. **Synaptic ops** estimates event-driven accumulations against dense multiply-accumulate operations for the same layer shapes; this is an operation estimate, not a measured hardware energy saving.
+
+## Dependencies and maintenance
+
+`requirements.txt` pins the direct Python dependencies. `requirements-lock.txt` pins the resolved dependencies used by the verified Windows environment. Use the lockfile for repeatable installation.
+
+The frontend pins Three.js 0.186.1 in `static/index.html` and has no build step. TorchAudio 2.11 supports PyTorch 2.11 and later; see its [installation guide](https://docs.pytorch.org/audio/master/installation.html) when changing versions.
+
+Preserve the model architecture and preprocessing behavior when making changes to `snn/` or `data/`: the checkpoint depends on them. To roll back a dependency upgrade, restore both requirements files from the previous Git revision and install into a fresh virtual environment. Keep checkpoints and recordings when replacing the environment.
+
+## Project structure
+
+```text
+neurochair/
+├── server.py                 # FastAPI routes, model loading, inference
+├── personalize.py            # Voice augmentation and fine-tuning
+├── start.cmd                 # Windows launcher
+├── requirements.txt          # Direct Python dependency pins
+├── requirements-lock.txt     # Resolved Python dependency pins
+├── snn/                      # Neurons, layers, classifier, surrogate gradients
+├── data/                     # MFCC extraction, spike encoding, audio utilities
+├── static/
+│   ├── index.html            # Interface and frontend dependency imports
+│   ├── styles.css            # Interface styling
+│   └── js/
+│       ├── app.js            # Controls, decoder, calibration interface
+│       ├── audio.js          # Microphone capture and voice activity detection
+│       └── scene.js          # 3D courtyard, wheelchair, animation, collisions
+├── checkpoints/              # Base and personalized model weights
+└── recordings/               # Created when clips are saved
+```
+
+## Troubleshooting
+
+| Problem | What to do |
+| --- | --- |
+| Launcher says the environment is missing | Complete First-time setup from the project folder. |
+| `ModuleNotFoundError` | Install `requirements-lock.txt` using `.venv\Scripts\python.exe`, then run `start.cmd`. Check your editor's interpreter too. |
+| Python 3.13 is not found | Install 64-bit CPython 3.13 with the Windows Python launcher, then reopen PowerShell. |
+| Port 8000 is already in use | Stop the previous server with Ctrl+C, or launch with `--port 8001` and open the matching URL. |
+| Browser cannot connect | Keep the server terminal open and check its startup output and port. |
+| Microphone does not work | Open the app through `localhost` or `127.0.0.1`, allow browser microphone access, and check the input device and Windows microphone permissions. |
+| Scene is blank | Check browser graphics acceleration, WebGL 2 support, and access to the jsDelivr CDN. |
+| Model is untrained | Put the trained checkpoint in `checkpoints/snn_checkpoint.pt`, then restart. |
+| Commands are misheard | Calibrate in your current room with your current microphone. Adjust sensitivity and confidence in Settings. |
+| Calibration does not match the checkpoint | Recalibrate after changing the base model, or start with `--base_only`. |
+
+## Validation of the current environment
+
+The dependency update was checked with checkpoint loading, comparison of MFCC features and model outputs against the previous runtime, prediction response serialization, a full calibration/save/reload/reset cycle using synthetic clips, dependency consistency, live HTTP requests, browser rendering, and driving controls.
+
+Physical microphone capture and live spoken-command accuracy still require a check with your microphone and voice. Synthetic calibration checks establish that the training path runs; they do not measure recognition accuracy.

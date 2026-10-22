@@ -28,6 +28,7 @@ import copy
 import sys
 import threading
 import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 
 import soundfile as sf
@@ -52,7 +53,16 @@ CORRECTIONS_DIR = RECORDINGS_DIR / "corrections"
 COMMAND_WORDS = ["go", "stop", "left", "right", "up", "down", "on", "off"]
 SHIFT_SAMPLES = int(0.08 * SAMPLE_RATE)
 
-app = FastAPI(title="NeuroChair")
+@asynccontextmanager
+async def lifespan(app):
+    # Also initialize when launched with `python -m uvicorn server:app`.
+    if state["model"] is None:
+        load_model(None, [128, 128])
+        load_personal()
+    yield
+
+
+app = FastAPI(title="NeuroChair", lifespan=lifespan)
 state = {"model": None, "base_model": None, "encoder": None, "loaded": False, "checkpoint": None,
          "personalized": False, "n_samples": 8, "session": None}
 train_lock = threading.Lock()

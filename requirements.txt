@@ -1,7 +1,7 @@
-# Python 3.12 — tested on Windows 11 (CPU). torch and torchaudio versions must match.
-torch==2.9.0
-torchaudio==2.9.0
+# Windows 11, CPython 3.13 (CPU). TorchAudio 2.11 supports PyTorch >=2.11.
+torch==2.14.1
+torchaudio==2.11.0
 soundfile==0.14.0
-numpy==2.1.2
-fastapi==0.141.1
+numpy==2.5.4
+fastapi==0.159.1
 uvicorn==0.54.0

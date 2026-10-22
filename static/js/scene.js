@@ -195,12 +195,14 @@ export function createScene(canvas, { onBlocked } = {}) {
   };
 
   // ---------- main loop ----------
-  const clock = new THREE.Clock();
+  const timer = new THREE.Timer();
+  timer.connect(document);
   const desired = new THREE.Vector3();
   function frame() {
     requestAnimationFrame(frame);
-    const dt = Math.min(clock.getDelta(), 0.05);
-    const t = clock.elapsedTime;
+    timer.update();
+    const dt = Math.min(timer.getDelta(), 0.05);
+    const t = timer.getElapsed();
     let changed = dirty;
 
     // heading: smooth rotation toward target
@@ -384,14 +386,15 @@ function buildWheelchair() {
   // a simple seated rider so the chair reads at a distance
   const rider = new THREE.MeshLambertMaterial({ color: 0x8a7fb8 });
   const skin = new THREE.MeshLambertMaterial({ color: 0xc99a7c });
-  const torso = cast(new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.3, 4, 10), rider));
+  // Since r176 capsule height includes both hemispheres (old length + 2 * radius).
+  const torso = cast(new THREE.Mesh(new THREE.CapsuleGeometry(0.15, 0.6, 4, 10), rider));
   torso.position.set(0, 0.86, -0.1); torso.rotation.x = -0.08; group.add(torso);
   const head = cast(new THREE.Mesh(new THREE.SphereGeometry(0.1, 16, 12), skin));
   head.position.set(0, 1.2, -0.08); group.add(head);
   for (const x of [0.09, -0.09]) {
-    const thigh = cast(new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.3, 4, 8), rider));
+    const thigh = cast(new THREE.Mesh(new THREE.CapsuleGeometry(0.06, 0.42, 4, 8), rider));
     thigh.rotation.x = Math.PI / 2; thigh.position.set(x, 0.6, 0.12); group.add(thigh);
-    const shin = cast(new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.3, 4, 8), rider));
+    const shin = cast(new THREE.Mesh(new THREE.CapsuleGeometry(0.05, 0.4, 4, 8), rider));
     shin.position.set(x, 0.37, 0.34); shin.rotation.x = 0.25; group.add(shin);
   }
 
