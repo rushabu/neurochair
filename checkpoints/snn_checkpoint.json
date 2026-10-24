@@ -1,0 +1,5 @@
+{
+  "label": "SNN, recurrent 2x128 (paper model)",
+  "test_accuracy": 0.728,
+  "note": "50 epochs on the full v0.02 training split with augmentation; the model reported in the paper."
+}

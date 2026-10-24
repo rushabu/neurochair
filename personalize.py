@@ -2,14 +2,15 @@
 Per-user voice calibration.
 
 The base SNN was trained on Google Speech Commands, which is recorded on different
-microphones, rooms and voices than a live laptop mic. With only 58% accuracy on its own
-test set, that domain shift hurts a lot live. Calibration records a few examples of each
+microphones, rooms and voices than a live laptop mic, and that domain shift costs a lot of
+accuracy live. Calibration records a few examples of each
 command from the actual user and fine-tunes the trained SNN on them (starting from the
 trained weights, not from scratch), with augmentation so a handful of clips go a long way:
   - random time shift (+-100 ms) -- the word won't always sit in the same place
   - random gain                  -- distance to the mic varies
   - a little additive noise      -- background changes
   - fresh Bernoulli spike samples every step (rate coding is stochastic anyway)
+The same procedure works for the non-spiking CNN and LSTM, which read the MFCCs directly.
 """
 
 import copy
@@ -45,15 +46,25 @@ def build_features(clips, encoder, n_aug: int):
     return torch.stack(feats), torch.tensor(labels)
 
 
+def is_spiking(model) -> bool:
+    return hasattr(model, "hidden_layers")  # SNNClassifier; the CNN/LSTM baselines read MFCCs
+
+
+def model_input(model, mfcc: torch.Tensor) -> torch.Tensor:
+    """Spike-encode for the SNN (fresh Bernoulli sample); pass MFCCs through for the baselines."""
+    return torch.bernoulli(mfcc) if is_spiking(model) else mfcc
+
+
 @torch.no_grad()
 def accuracy(model, clips, encoder, mask: torch.Tensor, n_samples: int = 8) -> float:
     if not clips:
         return float("nan")
     model.eval()
+    n = n_samples if is_spiking(model) else 1  # baselines are deterministic, one pass is enough
     correct = 0
     for w, word in clips:
         mfcc = encoder.waveform_to_mfcc(w)
-        x = torch.bernoulli(mfcc.unsqueeze(0).expand(n_samples, -1, -1).contiguous())
+        x = model_input(model, mfcc.unsqueeze(0).expand(n, -1, -1).contiguous())
         logits = model(x).mean(0).masked_fill(~mask, float("-inf"))
         correct += int(KEYWORDS[int(logits.argmax())] == word)
     return correct / len(clips)
@@ -69,9 +80,13 @@ def fine_tune(base_model, clips, encoder, steps: int = 150, lr: float = 1e-3, ba
         X, y = build_features(clips, encoder, n_aug)
         opt = torch.optim.Adam(model.parameters(), lr=lr)
         model.train()
+        # keep BatchNorm (CNN) on its training-set statistics: a few dozen clips would overwrite them
+        for m in model.modules():
+            if isinstance(m, torch.nn.BatchNorm1d):
+                m.eval()
         for _ in range(steps):
             idx = torch.randint(0, len(X), (batch,))
-            logits = model(torch.bernoulli(X[idx]))
+            logits = model(model_input(model, X[idx]))
             loss = F.cross_entropy(logits, y[idx])
             opt.zero_grad()
             loss.backward()

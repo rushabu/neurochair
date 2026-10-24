@@ -1,0 +1,5 @@
+{
+  "label": "LSTM baseline, 64 units",
+  "test_accuracy": 0.9465,
+  "note": "Non-spiking: reads the scaled MFCCs directly. 50 epochs, full v0.02 split, augmentation."
+}

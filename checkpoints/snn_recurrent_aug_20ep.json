@@ -1,0 +1,5 @@
+{
+  "label": "SNN, recurrent, augmented (20 ep.)",
+  "test_accuracy": 0.6777,
+  "note": "Ablation model: trained with noise, better in noise (57.5% mean)."
+}
