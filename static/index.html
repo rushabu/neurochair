@@ -32,6 +32,13 @@
   <canvas id="minimap" class="plan" width="320" height="320" role="img" aria-label="Plan view of the courtyard"></canvas>
 
   <aside class="drawer" id="tune" hidden>
+    <h2>Model</h2>
+    <label class="field">
+      <span>Weights</span>
+      <select id="modelSelect" aria-describedby="modelInfo"></select>
+      <small id="modelInfo">Every file in <code>checkpoints/</code> is listed here.</small>
+    </label>
+
     <h2>Listening</h2>
     <label class="field">
       <span>Confidence needed <b id="confVal">45%</b></span>
@@ -87,7 +94,7 @@
       <dl class="stats">
         <div><dt>hidden spikes</dt><dd id="stSpikes">—</dd></div>
         <div><dt>silent neurons</dt><dd id="stSparsity">—</dd></div>
-        <div><dt>synaptic ops</dt><dd id="stSops">—</dd></div>
+        <div><dt id="stOpsLabel">synaptic ops</dt><dd id="stSops">—</dd></div>
         <div><dt>fewer ops than dense</dt><dd id="stRatio">—</dd></div>
       </dl>
     </section>
@@ -128,7 +135,7 @@
   <div id="intro" class="sheet">
     <div class="sheet-card intro-card">
       <h1 class="intro-mark">Neuro<span>Chair</span></h1>
-      <p>Drive the chair with eight spoken words. A spiking neural network on this computer listens, and only acts when it is sure.</p>
+      <p>Drive the chair with eight spoken words. A neural network on this computer listens, and only acts when it is sure. It starts with the spiking network; switch to the CNN or LSTM in Settings.</p>
       <dl class="intro-words">
         <div><dt>go</dt><dd>drive forward</dd></div><div><dt>stop</dt><dd>brake</dd></div>
         <div><dt>left</dt><dd>turn left</dd></div><div><dt>right</dt><dd>turn right</dd></div>

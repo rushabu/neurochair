@@ -1,6 +1,6 @@
 # NeuroChair
 
-**A voice-controlled wheelchair simulator powered by a spiking neural network.**
+**A voice-controlled wheelchair simulator powered by selectable SNN, CNN, and LSTM keyword spotters.**
 
 Speak a command into your microphone to drive a wheelchair through a 3D courtyard. NeuroChair runs speech inference locally, displays neural spike activity, and can fine-tune the model on your voice. You can also drive with the keyboard or on-screen buttons.
 
@@ -11,6 +11,7 @@ The model and training pipeline come from [snn-keyword-spotter](https://github.c
 - Eight voice commands for driving, steering, speed, and headlights.
 - A Three.js scene with a follow camera, orbit camera, minimap, and obstacle braking.
 - Local inference through a FastAPI backend with CPU support.
+- Switch between SNN, CNN, and LSTM checkpoints in **Settings → Model** without restarting.
 - Voice calibration and corrections saved between sessions.
 - A decoder display showing spike rasters, confidence, latency, and estimated synaptic operations.
 - Adjustable confidence threshold, microphone sensitivity, and speed command recognition.
@@ -37,7 +38,7 @@ cd C:\Users\Rushabh\Downloads\Projects\neurochair
 .\start.cmd
 ```
 
-Open [http://localhost:8000](http://localhost:8000) in your browser.
+Open [http://localhost:8737](http://localhost:8737) in your browser.
 
 Keep the terminal open while using the app. To stop the server, press **Ctrl+C** in that terminal. Run `start.cmd` again whenever you want to restart it; reinstalling dependencies is unnecessary.
 
@@ -65,6 +66,14 @@ checkpoints/snn_checkpoint.pt
 The training notebook saves this file as `outputs/snn_checkpoint.pt`. Model checkpoints are ignored by Git, so a fresh clone may not include one.
 
 At startup, the server reads the checkpoint's layer sizes and recurrence settings. If the checkpoint is missing, the app still opens with an **untrained model** warning and random predictions. Use a trained checkpoint for meaningful voice recognition.
+
+## Models
+
+**Settings → Model** lists every `.pt` file in `checkpoints/` and switches between them without a restart. The architecture is inferred from the weights. Copy trained `cnn_checkpoint.pt`, `lstm_checkpoint.pt`, or additional SNN weights from the training project's outputs into this folder to make them available. Git includes model code and metadata, but does not include the trained `.pt` files.
+
+An optional matching `<name>.json` sets the model label, test accuracy, and note shown in the UI. Metadata alone does not install a model.
+
+The SNN displays spike rasters and synaptic operation estimates. CNN and LSTM models consume continuous MFCCs and display multiply-add counts instead of spike activity.
 
 ## Using the app
 
@@ -110,14 +119,14 @@ You can also click the command buttons. In orbit mode, drag to look around. When
 
 ## Calibrate to your voice
 
-Differences in microphones, accents, and room noise can affect recognition. Calibration fine-tunes a copy of the base model using your recordings.
+Differences in microphones, accents, and room noise can affect recognition. Calibration fine-tunes a copy of the active model using your recordings.
 
 1. Open **Settings → Calibrate to my voice**.
 2. Say each of the eight commands five times as prompted: 40 recordings in total.
 3. Wait for training to finish. Runtime depends on your CPU.
 4. Review the before/after scores, which use recordings held out from fine-tuning, then select **Start driving**.
 
-The final personalized model is trained on all saved recordings and loads automatically on the next start when a base checkpoint is available. Calibration results depend on the speaker and recordings; an improvement is not guaranteed.
+The final personalized model is trained on all saved recordings and appears in the model list. `snn_checkpoint_personal.pt` loads automatically on the next start when available. Calibration results depend on the speaker and recordings; an improvement is not guaranteed.
 
 ### Correct a misheard command
 
@@ -130,11 +139,11 @@ Retraining uses clips from all saved calibration sessions and corrections. For c
 | Location | Contents |
 | --- | --- |
 | `checkpoints/snn_checkpoint.pt` | Base trained model |
-| `checkpoints/snn_personal.pt` | Personalized model |
+| `checkpoints/<model>_personal.pt` | Personalized model |
 | `recordings/session_*/` | Calibration recordings |
 | `recordings/corrections/` | Corrected utterances |
 
-**Reset to base model** removes the personalized checkpoint and switches back to the base model. It keeps your recordings, which can be used during later retraining. To temporarily ignore personalized weights, launch with `--base_only`.
+**Back to …** removes the active personalized checkpoint and switches back to its base model. It keeps your recordings, which can be used during later retraining. To temporarily ignore personalized weights, launch with `--base_only`.
 
 ## Launch options
 
@@ -143,7 +152,7 @@ Retraining uses clips from all saved calibration sessions and corrections. For c
 .\start.cmd --port 8001
 
 # Use a specific trained checkpoint
-.\start.cmd --checkpoint "C:\path\to\snn_checkpoint.pt"
+.\start.cmd --checkpoint cnn_checkpoint.pt
 
 # Ignore personalized weights for this run
 .\start.cmd --base_only
@@ -154,11 +163,10 @@ Retraining uses clips from all saved calibration sessions and corrections. For c
 
 | Option | Default | Purpose |
 | --- | --- | --- |
-| `--port` | `8000` | Local server port |
-| `--checkpoint` | `checkpoints/snn_checkpoint.pt` | Base checkpoint path |
+| `--port` | `8737` | Local server port |
+| `--checkpoint` | `checkpoints/snn_checkpoint.pt` | Base checkpoint file in `checkpoints/` |
 | `--samples` | `8` | Bernoulli spike samples per window; use a positive integer |
-| `--base_only` | Disabled | Skip loading personalized weights |
-| `--hidden_sizes` | `128 128` | Hidden layer sizes when no checkpoint is available |
+| `--base_only` | Disabled | Start with the base model |
 
 The server listens on `127.0.0.1`. The Windows launcher uses the project's virtual environment and resolves the server path relative to its own location.
 
@@ -171,7 +179,7 @@ You can also launch directly from the project folder:
 Or use Uvicorn with the default model settings:
 
 ```powershell
-.\.venv\Scripts\python.exe -m uvicorn server:app --host 127.0.0.1 --port 8000
+.\.venv\Scripts\python.exe -m uvicorn server:app --host 127.0.0.1 --port 8737
 ```
 
 ## How recognition works
@@ -189,7 +197,7 @@ Browser microphone
   → simulated wheelchair action
 ```
 
-By default, inference uses eight spike samples for each of three windows: the selected window and copies shifted by ±80 ms. The encoder produces 20 MFCC channels over 50 time steps. MFCC extraction uses TorchAudio; WAV reading and writing use SoundFile.
+For the SNN, inference uses eight spike samples for each of three windows: the selected window and copies shifted by ±80 ms. The encoder produces 20 MFCC channels over 50 time steps. MFCC extraction uses TorchAudio; WAV reading and writing use SoundFile.
 
 The decoder's spike raster shows input and hidden-layer activity. **Silent neurons** measures the fraction of hidden neuron time steps without spikes. **Synaptic ops** estimates event-driven accumulations against dense multiply-accumulate operations for the same layer shapes; this is an operation estimate, not a measured hardware energy saving.
 
@@ -210,7 +218,7 @@ neurochair/
 ├── start.cmd                 # Windows launcher
 ├── requirements.txt          # Direct Python dependency pins
 ├── requirements-lock.txt     # Resolved Python dependency pins
-├── snn/                      # Neurons, layers, classifier, surrogate gradients
+├── snn/                      # SNN layers, classifier, CNN/LSTM baselines
 ├── data/                     # MFCC extraction, spike encoding, audio utilities
 ├── static/
 │   ├── index.html            # Interface and frontend dependency imports
@@ -230,7 +238,7 @@ neurochair/
 | Launcher says the environment is missing | Complete First-time setup from the project folder. |
 | `ModuleNotFoundError` | Install `requirements-lock.txt` using `.venv\Scripts\python.exe`, then run `start.cmd`. Check your editor's interpreter too. |
 | Python 3.13 is not found | Install 64-bit CPython 3.13 with the Windows Python launcher, then reopen PowerShell. |
-| Port 8000 is already in use | Stop the previous server with Ctrl+C, or launch with `--port 8001` and open the matching URL. |
+| Port 8737 is already in use | Stop the previous server with Ctrl+C, or launch with `--port 8001` and open the matching URL. |
 | Browser cannot connect | Keep the server terminal open and check its startup output and port. |
 | Microphone does not work | Open the app through `localhost` or `127.0.0.1`, allow browser microphone access, and check the input device and Windows microphone permissions. |
 | Scene is blank | Check browser graphics acceleration, WebGL 2 support, and access to the jsDelivr CDN. |

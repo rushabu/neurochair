@@ -1,0 +1,5 @@
+{
+  "label": "CNN baseline, 2 conv layers",
+  "test_accuracy": 0.9455,
+  "note": "Non-spiking: reads the scaled MFCCs directly. 50 epochs, full v0.02 split, augmentation."
+}

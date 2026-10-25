@@ -1,0 +1,5 @@
+{
+  "label": "SNN, recurrent, no augmentation (20 ep.)",
+  "test_accuracy": 0.7251,
+  "note": "Ablation model: cleanest-speech accuracy, weaker in noise (52.8% mean)."
+}

@@ -110,13 +110,13 @@ function renderKeys(probs = null, top = null) {
 
 // ---------- spike raster: drawn only while its sweep animates ----------
 const raster = $('raster');
-let rasterData = null, rasterStart = 0, rasterDirty = true;
+let rasterData = null, rasterNote = null, rasterStart = 0, rasterDirty = true;
 function drawRaster(now) {
   const [g, W, H] = fit(raster);
   if (!W) return false;
   if (!rasterData) {
     g.fillStyle = INK_2; g.font = `13px ${CANVAS_FONT}`; g.textAlign = 'center';
-    g.fillText('Say a command to see which neurons fire.', W / 2, H / 2 + 4);
+    g.fillText(rasterNote ?? 'Say a command to see which neurons fire.', W / 2, H / 2 + 4);
     return false;
   }
   const { shape } = rasterData;
@@ -231,7 +231,10 @@ async function classify(samples) {
 const compact = (n) => n >= 1e6 ? `${(n / 1e6).toFixed(2)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}k` : `${n}`;
 
 function showResult(r) {
-  rasterData = r.raster; rasterStart = performance.now(); rasterAnimating = true;
+  const spiking = !!r.raster;
+  rasterData = r.raster; rasterStart = performance.now(); rasterAnimating = spiking; rasterDirty = true;
+  rasterNote = spiking ? null : `${KIND[r.kind]}: no spikes to draw`;
+  document.querySelector('.spikes').classList.toggle('flat', !spiking);
   renderKeys(r.probs, r.word);
   const gate = r.word === 'stop' ? ui.conf * STOP_BIAS : ui.conf;
   const accepted = r.confidence >= gate;
@@ -244,10 +247,18 @@ function showResult(r) {
     : `Not sure enough (needs ${Math.round(gate * 100)}%), so nothing happened.`;
   $('confPct').textContent = `${Math.round(r.confidence * 100)}% sure`;
   $('latency').textContent = `${r.stats.latency_ms.toFixed(0)} ms`;
-  $('stSpikes').textContent = r.stats.hidden_spikes.toLocaleString();
-  $('stSparsity').textContent = `${(r.stats.sparsity * 100).toFixed(1)}%`;
-  $('stSops').textContent = compact(r.stats.sops);
-  $('stRatio').textContent = `${(r.stats.dense_macs / Math.max(1, r.stats.sops)).toFixed(1)}×`;
+  if (spiking) {
+    $('stSpikes').textContent = r.stats.hidden_spikes.toLocaleString();
+    $('stSparsity').textContent = `${(r.stats.sparsity * 100).toFixed(1)}%`;
+    $('stOpsLabel').textContent = 'synaptic ops';
+    $('stSops').textContent = compact(r.stats.sops);
+    $('stRatio').textContent = `${(r.stats.dense_macs / Math.max(1, r.stats.sops)).toFixed(1)}×`;
+  } else {
+    // a dense network does every multiply on every pass: no spikes, no silent neurons, no savings
+    for (const id of ['stSpikes', 'stSparsity', 'stRatio']) $(id).textContent = '—';
+    $('stOpsLabel').textContent = 'multiply-adds';
+    $('stSops').textContent = compact(r.stats.macs);
+  }
   if (accepted) execute(r.word, 'voice');
 }
 
@@ -304,7 +315,7 @@ const KEYMAP = {
   e: 'up', '=': 'up', '+': 'up', q: 'down', '-': 'down',
 };
 window.addEventListener('keydown', (e) => {
-  if (e.target.tagName === 'INPUT' || e.repeat) return;
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.repeat) return;
   if (e.key === ' ' && e.target.tagName === 'BUTTON') return; // let Space press the focused button
   const k = e.key.toLowerCase();
   const word = KEYMAP[k] ?? (k === 'l' ? (world.state.lights ? 'off' : 'on') : null);
@@ -391,12 +402,52 @@ $('calibReset').onclick = async () => {
   refreshStatus();
 };
 
+// ---------- model choice: every checkpoint the server can load ----------
+const KIND = { snn: 'SNN', cnn: 'CNN', lstm: 'LSTM' };
+let modelList = [];
+
+function showModelInfo() {
+  const m = modelList.find((x) => x.name === $('modelSelect').value);
+  $('modelInfo').textContent = !m ? 'No checkpoints found in checkpoints/.'
+    : m.error ? `${m.name} could not be read: ${m.error}`
+    : `${m.name} · ${KIND[m.kind]} · ${m.params.toLocaleString()} parameters${m.note ? `. ${m.note}` : ''}`;
+}
+
+async function loadModels() {
+  const { models, active } = await fetch('/api/models').then((r) => r.json());
+  modelList = models;
+  $('modelSelect').replaceChildren(...models.map((m) => {
+    const acc = m.test_accuracy != null ? ` · ${(m.test_accuracy * 100).toFixed(1)}% test` : '';
+    const o = new Option(m.kind ? `${m.label}${acc}` : `${m.name} (unreadable)`, m.name, false, m.name === active);
+    o.disabled = !m.kind;
+    return o;
+  }));
+  showModelInfo();
+}
+
+$('modelSelect').onchange = async (e) => {
+  const res = await fetch(`/api/model?name=${encodeURIComponent(e.target.value)}`, { method: 'POST' });
+  const st = await res.json();
+  if (!res.ok) { toast(st.error, 'danger'); return loadModels(); }
+  // forget the previous model's output so nothing on screen mixes two models
+  rasterData = null; rasterNote = null; rasterDirty = true;
+  document.querySelector('.spikes').classList.toggle('flat', st.kind !== 'snn');
+  renderKeys();
+  for (const id of ['stSpikes', 'stSparsity', 'stSops', 'stRatio', 'confPct', 'latency']) $(id).textContent = '';
+  $('heardWord').textContent = '—'; $('heardWord').className = 'word';
+  $('heardAction').textContent = `Now listening with ${st.label}.`;
+  toast(`Switched to ${st.label}`);
+  refreshStatus();
+};
+
 function refreshStatus() {
+  loadModels().catch(() => {});
   fetch('/api/status').then((r) => r.json()).then((st) => {
     const p = $('modelPill');
-    if (!st.model_loaded) { p.textContent = 'Untrained model'; p.className = 'tag warn'; p.title = 'Put snn_checkpoint.pt in checkpoints/ and restart the server'; }
-    else { p.textContent = `${st.personalized ? 'Calibrated to you' : 'Base model'} · ${st.hidden_sizes.join('×')}`; p.className = 'tag'; p.title = ''; }
+    if (!st.model_loaded) { p.textContent = 'Untrained model'; p.className = 'tag warn'; p.title = 'Choose a checkpoint in Settings, or put one in checkpoints/'; }
+    else { p.textContent = st.label; p.className = 'tag'; p.title = st.checkpoint; }
     $('calibReset').hidden = !st.personalized;
+    $('calibReset').textContent = st.base_label ? `Back to ${st.base_label}` : 'Reset to base model';
     $('calibRetrain').hidden = !st.corrections;
     $('calibRetrain').textContent = `Retrain with ${st.corrections} correction(s)`;
     $('calibBtn').textContent = st.personalized ? 'Recalibrate my voice' : 'Calibrate to my voice';

@@ -1,0 +1,5 @@
+{
+  "label": "SNN, recurrent, 500 clips/word (20 ep.)",
+  "test_accuracy": 0.527,
+  "note": "Ablation model: shows what too little training data costs."
+}
