@@ -27,10 +27,10 @@ chair auto-brakes before obstacles.
    pip install -r requirements.txt
    python server.py
    ```
-3. Open http://localhost:8000 in Chrome or Edge. Mic access needs `localhost` or HTTPS.
+3. Open http://localhost:8737 in Chrome or Edge. Mic access needs `localhost` or HTTPS.
 
 Options: `--checkpoint <file in checkpoints/>` (start model, default `snn_checkpoint.pt`), `--samples 8`
-(spike samples per window, SNN only), `--port 8000`, `--base_only` (ignore a calibrated model at start).
+(spike samples per window, SNN only), `--port 8737`, `--base_only` (ignore a calibrated model at start).
 Without a loadable checkpoint it runs an untrained SNN and the UI shows an "untrained model" warning.
 
 Keyboard: W go · S/Space stop · A/D turn · Q/E speed · L lights · C orbit camera · R reset · M mic.

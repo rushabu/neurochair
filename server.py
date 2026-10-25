@@ -20,7 +20,7 @@ Usage:
     pip install -r requirements.txt
     python server.py                          # starts with checkpoints/snn_checkpoint.pt
     python server.py --checkpoint cnn_checkpoint.pt
-Then open http://localhost:8000
+Then open http://localhost:8737
 
 Voice calibration (see personalize.py): the UI records a few clips per command into
 recordings/<session>/, and /api/calibrate/train fine-tunes the active model on them. The
@@ -396,7 +396,7 @@ if __name__ == "__main__":
     parser.add_argument("--checkpoint", type=str, default=None,
                         help="file in checkpoints/ to start with (any can be chosen later in the UI)")
     parser.add_argument("--samples", type=int, default=8, help="Bernoulli spike samples averaged per window (SNN)")
-    parser.add_argument("--port", type=int, default=8000)
+    parser.add_argument("--port", type=int, default=8737)
     parser.add_argument("--base_only", action="store_true", help="start with the base model even if a calibrated one exists")
     args = parser.parse_args()
     state["n_samples"] = args.samples
