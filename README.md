@@ -63,13 +63,13 @@ Place the trained model at:
 checkpoints/snn_checkpoint.pt
 ```
 
-The training notebook saves this file as `outputs/snn_checkpoint.pt`. Model checkpoints are ignored by Git, so a fresh clone may not include one.
+The default trained SNN checkpoint is included in Git, so a fresh clone can run it immediately after installing dependencies. The training notebook saves this file as `outputs/snn_checkpoint.pt`. Additional and personalized checkpoints remain ignored by Git.
 
 At startup, the server reads the checkpoint's layer sizes and recurrence settings. If the checkpoint is missing, the app still opens with an **untrained model** warning and random predictions. Use a trained checkpoint for meaningful voice recognition.
 
 ## Models
 
-**Settings → Model** lists every `.pt` file in `checkpoints/` and switches between them without a restart. The architecture is inferred from the weights. Copy trained `cnn_checkpoint.pt`, `lstm_checkpoint.pt`, or additional SNN weights from the training project's outputs into this folder to make them available. Git includes model code and metadata, but does not include the trained `.pt` files.
+**Settings → Model** lists every `.pt` file in `checkpoints/` and switches between them without a restart. The architecture is inferred from the weights. Git includes the default trained SNN checkpoint, model code, and metadata. Copy trained `cnn_checkpoint.pt`, `lstm_checkpoint.pt`, or additional SNN weights from the training project's outputs into this folder to make them available.
 
 An optional matching `<name>.json` sets the model label, test accuracy, and note shown in the UI. Metadata alone does not install a model.
 

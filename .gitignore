@@ -1,6 +1,7 @@
 __pycache__/
 *.pyc
 checkpoints/*.pt
+!checkpoints/snn_checkpoint.pt
 checkpoints/*_personal.json
 recordings/
 .venv/
