@@ -75,6 +75,24 @@ An optional matching `<name>.json` sets the model label, test accuracy, and note
 
 The SNN displays spike rasters and synaptic operation estimates. CNN and LSTM models consume continuous MFCCs and display multiply-add counts instead of spike activity.
 
+Models with metadata but no weights appear disabled as **weights missing**. Their metadata describes a separate training run; it does not provide a usable model. Only loaded weights receive an accuracy label in the picker.
+
+### Train the missing CNN/LSTM weights
+
+If you do not have trained files, this command downloads the multi-gigabyte official Speech Commands v0.02 dataset and trains both baselines. CPU training can take hours:
+
+```powershell
+.\.venv\Scripts\python.exe train_baselines.py --data-root datasets --download
+```
+
+Or use an existing dataset folder containing keyword directories plus `validation_list.txt` and `testing_list.txt`:
+
+```powershell
+.\.venv\Scripts\python.exe train_baselines.py --data-root "C:\path\to\speech_commands_v0.02"
+```
+
+The script saves `cnn_checkpoint.pt` and `lstm_checkpoint.pt` in `checkpoints/` along with measured test scores from the held-out split. Existing weights are protected from overwriting; use `--output-dir` for a separate run. Reopen Settings after training, or restart the app. These two base checkpoint names are allowed in Git; personalized weights and the downloaded dataset stay ignored.
+
 ## Using the app
 
 1. Start the server and open the local URL.

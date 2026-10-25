@@ -301,6 +301,7 @@ async function toggleMic() {
 function toggleDrawer(open = $('tune').hidden) {
   $('tune').hidden = !open;
   $('tuneBtn').setAttribute('aria-expanded', open);
+  if (open) loadModels().catch(() => {});
 }
 $('tuneBtn').onclick = () => toggleDrawer();
 $('micBtn').onclick = toggleMic;
@@ -418,11 +419,16 @@ async function loadModels() {
   modelList = models;
   $('modelSelect').replaceChildren(...models.map((m) => {
     const acc = m.test_accuracy != null ? ` · ${(m.test_accuracy * 100).toFixed(1)}% test` : '';
-    const o = new Option(m.kind ? `${m.label}${acc}` : `${m.name} (unreadable)`, m.name, false, m.name === active);
+    const o = new Option(m.missing ? `${m.label} (weights missing)`
+      : m.kind ? `${m.label}${acc}` : `${m.name} (unreadable)`, m.name, false, m.name === active);
     o.disabled = !m.kind;
     return o;
   }));
   showModelInfo();
+  const missing = models.filter((m) => m.missing).map((m) => m.name);
+  $('modelMissing').hidden = missing.length === 0;
+  $('modelMissing').textContent = missing.length
+    ? `Some models are unavailable because their trained weights are missing: ${missing.join(', ')}. Add the matching checkpoint files, then reopen Settings.` : '';
 }
 
 $('modelSelect').onchange = async (e) => {

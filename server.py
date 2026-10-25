@@ -225,13 +225,18 @@ def status():
 
 @app.get("/api/models")
 def models():
-    """Every loadable checkpoint in checkpoints/, with its type, size and (if known) test accuracy."""
+    """Available checkpoints, plus explicit placeholders for missing advertised weights."""
     out = []
     for path in sorted(CKPT_DIR.glob("*.pt")):
         try:
             out.append(describe(path))
         except Exception as e:  # unreadable or foreign file: list it as unusable rather than hiding it
             out.append({"name": path.name, "kind": None, "label": path.stem, "error": str(e)})
+    for sidecar in sorted(CKPT_DIR.glob("*.json")):
+        path = sidecar.with_suffix(".pt")
+        if not path.is_file() and not sidecar.stem.endswith("_personal"):
+            out.append({"name": path.name, "kind": None, "label": meta(path).get("label", path.stem),
+                        "missing": True, "error": "Trained weights are missing."})
     return {"models": out, "active": state["name"]}
 
 
