@@ -1,5 +1,5 @@
 {
   "label": "LSTM baseline, 64 units",
   "test_accuracy": 0.9465,
-  "note": "Non-spiking: reads the scaled MFCCs directly. 50 epochs, full v0.02 split, augmentation."
+  "note": "Non-spiking, reads the scaled MFCCs. Speech Commands v0.02 official splits; 50 epochs with augmentation; best validation epoch kept (validation=0.9457, 3703 clips); test accuracy on the 4074 held-out test clips."
 }

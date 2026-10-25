@@ -1,5 +1,5 @@
 {
-  "label": "SNN, recurrent 2x128 (paper model)",
-  "test_accuracy": 0.728,
-  "note": "50 epochs on the full v0.02 training split with augmentation; the model reported in the paper."
+  "label": "SNN, feed-forward 2x128 (default)",
+  "test_accuracy": 0.6205,
+  "note": "20,490 parameters, no recurrent weights. Measured on the 4074 Speech Commands v0.02 held-out test clips with one spike sample per clip (validation=0.6306); single-sample accuracy varies by about one point between spike draws."
 }
